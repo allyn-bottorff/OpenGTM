@@ -75,10 +75,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     // Run the "main" loop which calls other apis and updates the cache
-    // loop {
+    //
+    // TODO: Reload config on some interrupt (like SIGHUP)
+    // 
     // Order of operations:
     // 1. Check list of mananged servers.
-    // 2. Spawn a task for each checked server.
+    // 2. Spawn a long-lived task for each checked server.
     // 3. Let each task loop over check interval.
 
     // Make an HTTP call to the local pingpong server. Return an error up to the tokio runtime
@@ -149,6 +151,11 @@ async fn health_poller(cache: Arc<Mutex<HashMap<String, Ipv4Addr>>>, config: Con
     // the interval to 0 so that the sleep is now the same as the interval.
     // This should keep the polling fairly even across the typical polling periods and prevent
     // blasting traffic out all at once on startup and then every 30 seconds after.
+    //
+    // TODO: HTTP and HTTPS health checks
+    // TODO: TCP-only health checks
+    // TODO: Health checks which require authentication
+    // TODO: De-couple monitors and pools/pool members.
 
     let url = format!("http://{}:{}{}", config.host, config.port, config.send);
 
