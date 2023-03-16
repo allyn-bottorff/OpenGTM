@@ -27,7 +27,7 @@ struct Config {
 
 impl Config {
     /// Long lived task which can poll the target host the interval and set the result IP in the map.
-    async fn health_poller(self, cache: Arc<Mutex<HashMap<String, Ipv4Addr>>>) {
+    async fn http_poller(self, cache: Arc<Mutex<HashMap<String, Ipv4Addr>>>) {
         // Set backoff to random integer value between 0 and the interval. At the end of the loop,
         // sleep the difference between the backoff and the configured interval. Ater the sleep, set
         // the interval to 0 so that the sleep is now the same as the interval.
@@ -140,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for c in conf {
         let t = Arc::clone(&cache);
-        join_set.spawn(c.health_poller(t));
+        join_set.spawn(c.http_poller(t));
     }
 
     while let Some(_res) = join_set.join_next().await {}
