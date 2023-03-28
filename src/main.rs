@@ -7,90 +7,13 @@ use axum::{
     Router,
 };
 
-use reqwest;
+// use reqwest;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinSet;
-
-#[derive(Clone)]
-enum PollType {
-    HTTP,
-    HTTPS,
-    TCP,
-
-}
-
-#[derive(Clone)]
-struct Config {
-    send: String,
-    name: String,
-    host: String,
-    port: u16,
-    interval: u16,
-    ip_addrs: Vec<Ipv4Addr>,
-    poll_type: PollType,
-
-}
-
-
-impl Config {
-
-
-    /// Long lived task which can poll the target host the interval and set the result IP in the map.
-    async fn health_poller(self, cache: Arc<Mutex<HashMap<String, Ipv4Addr>>>) {
-        // Set backoff to random integer value between 0 and the interval. At the end of the loop,
-        // sleep the difference between the backoff and the configured interval. Ater the sleep, set
-        // the interval to 0 so that the sleep is now the same as the interval.
-        // This should keep the polling fairly even across the typical polling periods and prevent
-        // blasting traffic out all at once on startup and then every 30 seconds after.
-        //
-        // TODO: HTTP and HTTPS health checks
-        // TODO: TCP-only health checks
-        // TODO: Health checks which require authentication
-        // TODO: De-couple monitors and pools/pool members.
-
-        let url_base = match self.poll_type {
-            PollType::HTTP => format!("http://{}:{}{}", self.host, self.port, self.send),
-            PollType::HTTPS => format!("https://{}:{}{}", self.host, self.port, self.send),
-            PollType::TCP => String::from("")
-        };
-
-
-
-
-        let url = format!("http://{}:{}{}", self.host, self.port, self.send);
-
-        loop {
-            match reqwest::get(&url).await {
-                Ok(r) => {
-                    match r.status() {
-                        StatusCode::OK => {
-                            let mut ips = cache.lock().unwrap();
-                            ips.insert(self.name.clone(), Into::into(self.ip_addrs[0]));
-                        }
-                        StatusCode::SERVICE_UNAVAILABLE => {
-                            let mut ips = cache.lock().unwrap();
-                            ips.insert(self.name.clone(), Into::into(self.ip_addrs[1]));
-                        }
-                        _ => {
-                            let mut ips = cache.lock().unwrap();
-                            ips.insert(self.name.clone(), Into::into(self.ip_addrs[1]));
-                        }
-                    };
-                }
-                Err(_) => {
-                    let mut ips = cache.lock().unwrap();
-                    ips.insert(self.name.clone(), Into::into(self.ip_addrs[1]));
-                }
-            };
-
-            tokio::time::sleep(tokio::time::Duration::from_secs(self.interval.into())).await;
-        }
-    }
-}
 
 #[derive(Deserialize)]
 struct QueryParams {
@@ -120,32 +43,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // HEALTH CHECKER SECTION
 
     let conf = vec![
-        Config {
+        gtm::Config {
             send: String::from("/healthy"),
             name: String::from("svc1"),
             host: String::from("127.0.0.1"),
             port: 9090,
             interval: 5,
             ip_addrs: vec![Into::into([1, 1, 1, 1]), Into::into([1, 1, 1, 2])],
-            poll_type: PollType::HTTP,
+            poll_type: gtm::PollType::HTTP,
         },
-        Config {
+        gtm::Config {
             send: String::from("/healthy"),
             name: String::from("svc2"),
             host: String::from("127.0.0.1"),
             port: 9090,
             interval: 15,
             ip_addrs: vec![Into::into([1, 1, 2, 1]), Into::into([1, 1, 2, 2])],
-            poll_type: PollType::HTTP,
+            poll_type: gtm::PollType::HTTP,
         },
-        Config {
+        gtm::Config {
             send: String::from("/unhealthy"),
             name: String::from("svc3"),
             host: String::from("127.0.0.1"),
             port: 9090,
             interval: 12,
             ip_addrs: vec![Into::into([1, 1, 3, 1]), Into::into([1, 1, 3, 2])],
-            poll_type: PollType::HTTP,
+            poll_type: gtm::PollType::HTTP,
         },
     ];
 
@@ -165,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for c in conf {
         let t = Arc::clone(&cache);
-        join_set.spawn(c.health_poller(t));
+        join_set.spawn(c.http_poller(t));
     }
 
     while let Some(_res) = join_set.join_next().await {}
@@ -223,7 +146,6 @@ async fn reset(
 
     (StatusCode::OK, String::from("OK"))
 }
-
 
 #[cfg(test)]
 mod tests {
