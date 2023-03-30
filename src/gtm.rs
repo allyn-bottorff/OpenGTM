@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use reqwest;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
@@ -22,7 +23,7 @@ use std::sync::{Arc, Mutex};
 //     hostname: String,
 //     service_port: u16,
 // }
-#[derive(Clone)]
+#[derive(Clone, Deserialize)]
 pub enum PollType {
     HTTP,
     HTTPS,
@@ -62,7 +63,7 @@ impl Member {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize)]
 pub struct Pool {
     pub send: String,
     pub name: String, //FQDN label for load balanced app

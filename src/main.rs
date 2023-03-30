@@ -9,9 +9,12 @@ use axum::{
 
 // use reqwest;
 use serde::Deserialize;
-use std::collections::HashMap;
+use serde_json;
+use std::fs::File;
+use std::io::BufReader;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::{collections::HashMap, error::Error};
 use tokio::task::JoinSet;
 
 #[derive(Deserialize)]
@@ -45,32 +48,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // HEALTH CHECKER SECTION
     // -----------------------------------------------------------------------
 
-    let conf = vec![
-        gtm::Pool {
-            send: String::from("/healthy"),
-            name: String::from("svc1"),
-            port: 9090,
-            members: vec!["localhost".into()],
-            interval: 5,
-            poll_type: gtm::PollType::HTTP,
-        },
-        gtm::Pool {
-            send: String::from("/healthy"),
-            name: String::from("svc2"),
-            members: vec!["localhost".into()],
-            port: 9090,
-            interval: 15,
-            poll_type: gtm::PollType::HTTP,
-        },
-        gtm::Pool {
-            send: String::from("/unhealthy"),
-            name: String::from("svc3"),
-            members: vec!["localhost".into()],
-            port: 9090,
-            interval: 12,
-            poll_type: gtm::PollType::HTTP,
-        },
-    ];
+    // let conf = vec![
+    //     gtm::Pool {
+    //         send: String::from("/healthy"),
+    //         name: String::from("svc1"),
+    //         port: 9090,
+    //         members: vec!["localhost".into()],
+    //         interval: 5,
+    //         poll_type: gtm::PollType::HTTP,
+    //     },
+    //     gtm::Pool {
+    //         send: String::from("/healthy"),
+    //         name: String::from("svc2"),
+    //         members: vec!["localhost".into()],
+    //         port: 9090,
+    //         interval: 15,
+    //         poll_type: gtm::PollType::HTTP,
+    //     },
+    //     gtm::Pool {
+    //         send: String::from("/unhealthy"),
+    //         name: String::from("svc3"),
+    //         members: vec!["localhost".into()],
+    //         port: 9090,
+    //         interval: 12,
+    //         poll_type: gtm::PollType::HTTP,
+    //     },
+    // ];
+    let conf = read_config(String::from("./conf.json")).unwrap();
 
     for c in &conf {
         let t = Arc::clone(&cache);
@@ -160,7 +164,7 @@ async fn reset(
 ) -> (StatusCode, String) {
     state.lock().unwrap().insert(
         q.name.clone(),
-        vec![gtm::Member{
+        vec![gtm::Member {
             host: String::from("localhost"),
             ip: Into::into([1, 2, 3, 4]),
             healthy: true,
@@ -168,6 +172,17 @@ async fn reset(
     );
 
     (StatusCode::OK, String::from("OK"))
+}
+
+/// Read config file
+fn read_config(path: String) -> Result<Vec<gtm::Pool>, Box<dyn Error>> {
+    // let mut conf: Vec<gtm::Pool> = Vec::new();
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+
+    let conf: Vec<gtm::Pool> = serde_json::from_reader(reader)?;
+
+    Ok(conf)
 }
 
 #[cfg(test)]

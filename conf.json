@@ -1,0 +1,26 @@
+[
+    {
+        "send": "/healthy",
+        "name": "svc1",
+        "port": 9090,
+        "members": ["localhost"],
+        "interval": 5,
+        "poll_type": "HTTP"
+    },
+    {
+        "send": "/healthy",
+        "name": "svc2",
+        "port": 9090,
+        "members": ["localhost"],
+        "interval": 15,
+        "poll_type": "HTTP"
+    },
+    {
+        "send": "/healthy",
+        "name": "svc3",
+        "port": 9090,
+        "members": ["localhost"],
+        "interval": 12,
+        "poll_type": "HTTP"
+    }
+]
