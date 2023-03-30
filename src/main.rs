@@ -10,7 +10,7 @@ use axum::{
 // use reqwest;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinSet;
 
@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for c in &conf {
         let t = Arc::clone(&cache);
         let mut items = t.lock().unwrap();
-        let members: Vec<gtm::Member> = c.members.iter().map(|m| make_member(m)).collect();
+        let members: Vec<gtm::Member> = c.members.iter().map(|m| gtm::Member::new(m)).collect();
         items.insert(c.name.clone(), members);
     }
 
@@ -122,27 +122,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // }
 }
 
-fn make_member(host: &String) -> gtm::Member {
-    let host_socket = format!("{}:{}", host, 443);
-
-    let resolved_addr: Ipv4Addr = match &host_socket
-        .to_socket_addrs()
-        .unwrap()
-        .filter(|ip| ip.is_ipv4())
-        .next()
-        .unwrap()
-        .ip()
-    {
-        IpAddr::V4(ip) => *ip,
-        IpAddr::V6(_) => panic!(
-            "Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}",
-            &host
-        ), //This should be impossible.
-    };
-
-    gtm::Member(host.clone(), resolved_addr, false)
-}
-
 /// Service health probe
 async fn healthz() -> (StatusCode, &'static str) {
     (StatusCode::OK, "OK")
@@ -179,10 +158,14 @@ async fn reset(
     q: Query<QueryParams>,
     State(state): State<Arc<Mutex<HashMap<String, Vec<gtm::Member>>>>>,
 ) -> (StatusCode, String) {
-    state
-        .lock()
-        .unwrap()
-        .insert(q.name.clone(), vec![gtm::Member(String::from("localhost"), Into::into([1, 2, 3, 4]), true)]);
+    state.lock().unwrap().insert(
+        q.name.clone(),
+        vec![gtm::Member(
+            String::from("localhost"),
+            Into::into([1, 2, 3, 4]),
+            true,
+        )],
+    );
 
     (StatusCode::OK, String::from("OK"))
 }
