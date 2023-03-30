@@ -10,8 +10,7 @@ use axum::{
 // use reqwest;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinSet;
 
@@ -22,13 +21,15 @@ struct QueryParams {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // -----------------------------------------------------------------------
     // API SECTION
+    // -----------------------------------------------------------------------
 
     println!("Starting health checkers");
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
-    let cache: Arc<Mutex<HashMap<String, Ipv4Addr>>> = Arc::new(Mutex::new(HashMap::new()));
+    let cache: Arc<Mutex<HashMap<String, Vec<gtm::Member>>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let t = Arc::clone(&cache);
     let app = Router::new()
@@ -40,37 +41,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tokio::spawn(axum::Server::bind(&addr).serve(app.into_make_service()));
 
+    // -----------------------------------------------------------------------
     // HEALTH CHECKER SECTION
+    // -----------------------------------------------------------------------
 
     let conf = vec![
-        gtm::Config {
+        gtm::Pool {
             send: String::from("/healthy"),
             name: String::from("svc1"),
-            host: String::from("127.0.0.1"),
             port: 9090,
+            members: vec!["localhost".into()],
             interval: 5,
-            ip_addrs: vec![Into::into([1, 1, 1, 1]), Into::into([1, 1, 1, 2])],
             poll_type: gtm::PollType::HTTP,
         },
-        gtm::Config {
+        gtm::Pool {
             send: String::from("/healthy"),
             name: String::from("svc2"),
-            host: String::from("127.0.0.1"),
+            members: vec!["localhost".into()],
             port: 9090,
             interval: 15,
-            ip_addrs: vec![Into::into([1, 1, 2, 1]), Into::into([1, 1, 2, 2])],
             poll_type: gtm::PollType::HTTP,
         },
-        gtm::Config {
+        gtm::Pool {
             send: String::from("/unhealthy"),
             name: String::from("svc3"),
-            host: String::from("127.0.0.1"),
+            members: vec!["localhost".into()],
             port: 9090,
             interval: 12,
-            ip_addrs: vec![Into::into([1, 1, 3, 1]), Into::into([1, 1, 3, 2])],
             poll_type: gtm::PollType::HTTP,
         },
     ];
+
+    for c in &conf {
+        let t = Arc::clone(&cache);
+        let mut items = t.lock().unwrap();
+        let members: Vec<gtm::Member> = c.members.iter().map(|m| make_member(m)).collect();
+        items.insert(c.name.clone(), members);
+    }
 
     // Run the "main" loop which calls other apis and updates the cache
     //
@@ -87,8 +94,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut join_set = JoinSet::new();
 
     for c in conf {
-        let t = Arc::clone(&cache);
-        join_set.spawn(c.http_poller(t));
+        for member in &c.members {
+            let t = Arc::clone(&cache);
+            let name = member.clone();
+            join_set.spawn(c.clone().http_poller(name, t));
+        }
     }
 
     while let Some(_res) = join_set.join_next().await {}
@@ -112,6 +122,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // }
 }
 
+fn make_member(host: &String) -> gtm::Member {
+    let host_socket = format!("{}:{}", host, 443);
+
+    let resolved_addr: Ipv4Addr = match &host_socket
+        .to_socket_addrs()
+        .unwrap()
+        .filter(|ip| ip.is_ipv4())
+        .next()
+        .unwrap()
+        .ip()
+    {
+        IpAddr::V4(ip) => *ip,
+        IpAddr::V6(_) => panic!(
+            "Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}",
+            &host
+        ), //This should be impossible.
+    };
+
+    gtm::Member(host.clone(), resolved_addr, false)
+}
+
 /// Service health probe
 async fn healthz() -> (StatusCode, &'static str) {
     (StatusCode::OK, "OK")
@@ -125,24 +156,33 @@ async fn livez() -> (StatusCode, &'static str) {
 /// Get the current value of the "localhost" entry of the host:ip Map
 async fn info(
     q: Query<QueryParams>,
-    State(state): State<Arc<Mutex<HashMap<String, Ipv4Addr>>>>,
+    State(state): State<Arc<Mutex<HashMap<String, Vec<gtm::Member>>>>>,
 ) -> (StatusCode, String) {
     // TODO(alb): handle the unwrap below better.
-    let ip = state.lock().unwrap().get(&q.name).unwrap().to_string();
+    let ip = &state
+        .lock()
+        .unwrap()
+        .get(&q.name)
+        .unwrap()
+        .first()
+        .unwrap()
+        .clone()
+        .1
+        .to_string();
 
-    (StatusCode::OK, ip)
+    (StatusCode::OK, ip.to_string())
 }
 
 /// Set the contents of the "localhost" entry of the host:ip map to be some
 /// arbitrary IP to prove that the state is changing
 async fn reset(
     q: Query<QueryParams>,
-    State(state): State<Arc<Mutex<HashMap<String, Ipv4Addr>>>>,
+    State(state): State<Arc<Mutex<HashMap<String, Vec<gtm::Member>>>>>,
 ) -> (StatusCode, String) {
     state
         .lock()
         .unwrap()
-        .insert(q.name.clone(), Into::into([1, 2, 3, 4]));
+        .insert(q.name.clone(), vec![gtm::Member(String::from("localhost"), Into::into([1, 2, 3, 4]), true)]);
 
     (StatusCode::OK, String::from("OK"))
 }
