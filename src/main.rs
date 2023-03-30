@@ -146,7 +146,7 @@ async fn info(
         .first()
         .unwrap()
         .clone()
-        .1
+        .ip
         .to_string();
 
     (StatusCode::OK, ip.to_string())
@@ -160,11 +160,11 @@ async fn reset(
 ) -> (StatusCode, String) {
     state.lock().unwrap().insert(
         q.name.clone(),
-        vec![gtm::Member(
-            String::from("localhost"),
-            Into::into([1, 2, 3, 4]),
-            true,
-        )],
+        vec![gtm::Member{
+            host: String::from("localhost"),
+            ip: Into::into([1, 2, 3, 4]),
+            healthy: true,
+        }],
     );
 
     (StatusCode::OK, String::from("OK"))

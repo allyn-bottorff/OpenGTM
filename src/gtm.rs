@@ -30,11 +30,11 @@ pub enum PollType {
 }
 
 #[derive(Clone)]
-pub struct Member(
-    pub String,   //FQDN
-    pub Ipv4Addr, //IP
-    pub bool,
-); //Health status
+pub struct Member {
+    pub host: String,
+    pub ip: Ipv4Addr,
+    pub healthy: bool,
+}
 impl Member {
     pub fn new(host: &String) -> Member {
         let host_socket = format!("{}:{}", host, 443);
@@ -54,7 +54,11 @@ impl Member {
         ), //This should be impossible.
         };
 
-        Member(host.clone(), resolved_addr, false)
+        Member {
+            host: host.clone(),
+            ip: resolved_addr,
+            healthy: false,
+        }
     }
 }
 
@@ -106,8 +110,8 @@ impl Pool {
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
                                 for ip in items.iter_mut() {
-                                    if ip.1 == resolved_addr {
-                                        ip.2 = true;
+                                    if ip.ip == resolved_addr {
+                                        ip.healthy = true;
                                     }
                                 }
                             } else {
@@ -118,8 +122,8 @@ impl Pool {
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
                                 for ip in items.iter_mut() {
-                                    if ip.1 == resolved_addr {
-                                        ip.2 = false;
+                                    if ip.ip == resolved_addr {
+                                        ip.healthy = false;
                                     }
                                 }
                             } else {
@@ -130,8 +134,8 @@ impl Pool {
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
                                 for ip in items.iter_mut() {
-                                    if ip.1 == resolved_addr {
-                                        ip.2 = false;
+                                    if ip.ip == resolved_addr {
+                                        ip.healthy = false;
                                     }
                                 }
                             } else {
