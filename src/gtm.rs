@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 pub enum PollType {
     HTTP,
     HTTPS,
-    TCP,
+    // TCP, // TODO(alb): support basic TCP polling
 }
 
 #[derive(Clone)]
@@ -40,6 +40,8 @@ impl Member {
     pub fn new(host: &String) -> Member {
         let host_socket = format!("{}:{}", host, 443);
 
+        // Get the first ipv4 address and ignore the rest
+        // Explode if after filtering for an ipv4 addr, an ipv6 addr is parsed.
         let resolved_addr: Ipv4Addr = match &host_socket
             .to_socket_addrs()
             .unwrap()
@@ -87,32 +89,49 @@ impl Pool {
         // TODO(alb): Health checks which require authentication
         // TODO(alb): De-couple monitors and pools/pool members.
 
-        let url = format!("http://{}:{}{}", host, self.port, self.send);
+        let url = match self.poll_type {
+            PollType::HTTP => format!("http://{}:{}{}", host, self.port, self.send),
+            PollType::HTTPS => format!("https://{}:{}{}", host, self.port, self.send),
+        };
 
         let host_socket = format!("{}:{}", host, self.port);
 
+
         loop {
+            let client = match self.poll_type {
+                PollType::HTTPS => reqwest::Client::builder()
+                    .danger_accept_invalid_certs(true)
+                    .build()
+                    .unwrap(),
+                PollType::HTTP =>  reqwest::Client::builder()
+                    .build()
+                    .unwrap(),
+            };
+
             // Resolve the hostname once per iteration
             // TODO(alb): Handle this error more appropriately
             // This gets the first ipv4 addr and panics if it finds an ipv6
             let resolved_addr: Ipv4Addr =  match &host_socket
                 .to_socket_addrs().unwrap()
                 .filter(|ip| ip.is_ipv4())
-                .next().unwrap()
+                .next().expect("No IpV4 addresses found")
                 .ip() {
                     IpAddr::V4(ip) =>  *ip,
                     IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}", &host) //This should be impossible.
                 };
 
-            match reqwest::get(&url).await {
+            let req = client.get(&url).build().expect("Failed to build request.");
+
+            match client.execute(req).await {
                 Ok(r) => {
                     match r.status() {
                         StatusCode::OK => {
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
-                                for ip in items.iter_mut() {
-                                    if ip.ip == resolved_addr {
-                                        ip.healthy = true;
+                                for member in items.iter_mut() {
+                                    if member.host == host {
+                                        member.healthy = true;
+                                        member.ip = resolved_addr;
                                     }
                                 }
                             } else {
@@ -122,9 +141,9 @@ impl Pool {
                         StatusCode::SERVICE_UNAVAILABLE => {
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
-                                for ip in items.iter_mut() {
-                                    if ip.ip == resolved_addr {
-                                        ip.healthy = false;
+                                for member in items.iter_mut() {
+                                    if member.host == host {
+                                        member.healthy = false;
                                     }
                                 }
                             } else {
@@ -134,9 +153,9 @@ impl Pool {
                         _ => {
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
-                                for ip in items.iter_mut() {
-                                    if ip.ip == resolved_addr {
-                                        ip.healthy = false;
+                                for member in items.iter_mut() {
+                                    if member.host == host {
+                                        member.healthy = false;
                                     }
                                 }
                             } else {
