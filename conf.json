@@ -22,5 +22,17 @@
         "members": ["localhost"],
         "interval": 12,
         "poll_type": "HTTP"
+    },
+    {
+        "send": "/health",
+        "name": "optimize",
+        "port": 443,
+        "members": [
+            "ddw02optimize01.vuhl.root.mrc.local",
+            "ddw02optimize02.vuhl.root.mrc.local"
+        ],
+        "fallback_ip": "1.0.0.0",
+        "interval": 30,
+        "poll_type": "HTTPS"
     }
 ]

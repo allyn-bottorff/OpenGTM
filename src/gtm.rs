@@ -73,6 +73,7 @@ pub struct Pool {
     pub interval: u16,
     pub members: Vec<String>, //Pool member FQDNs
     pub poll_type: PollType,
+    pub fallback_ip: Option<Ipv4Addr>,
 }
 
 impl Pool {

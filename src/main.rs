@@ -79,7 +79,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for c in &conf {
         let t = Arc::clone(&cache);
         let mut items = t.lock().unwrap();
-        let members: Vec<gtm::Member> = c.members.iter().map(|m| gtm::Member::new(m)).collect();
+        let mut members: Vec<gtm::Member> = c.members.iter().map(|m| gtm::Member::new(m)).collect();
+        if let Some(fallback_ip) = c.fallback_ip {
+            members.push(gtm::Member {
+                host: "fallback".into(),
+                ip: fallback_ip,
+                healthy: true,
+            });
+        }
+
         items.insert(c.name.clone(), members);
     }
 
@@ -141,19 +149,19 @@ async fn info(
     q: Query<QueryParams>,
     State(state): State<Arc<Mutex<HashMap<String, Vec<gtm::Member>>>>>,
 ) -> (StatusCode, String) {
-    // TODO(alb): handle the unwrap below better.
-    let ip = &state
-        .lock()
-        .unwrap()
-        .get(&q.name)
-        .unwrap()
-        .first()
-        .unwrap()
-        .clone()
-        .ip
-        .to_string();
+    let map = &state.lock().unwrap();
+    if let Some(item) = map.get(&q.name) {
+        let healthy_members: Vec<&gtm::Member> =
+            item.iter().filter(|m| m.healthy == true).collect();
 
-    (StatusCode::OK, ip.to_string())
+        if let Some(member) = healthy_members.first() {
+            (StatusCode::OK, member.ip.to_string())
+        } else {
+            (StatusCode::NOT_FOUND, "Not Found".into())
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "Not Found".into())
+    }
 }
 
 /// Set the contents of the "localhost" entry of the host:ip map to be some
