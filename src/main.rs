@@ -157,7 +157,7 @@ async fn info(
         if let Some(member) = healthy_members.first() {
             (StatusCode::OK, member.ip.to_string())
         } else {
-            (StatusCode::NOT_FOUND, "Not Found".into())
+            (StatusCode::NOT_FOUND, "No healthy members and no fallback".into())
         }
     } else {
         (StatusCode::NOT_FOUND, "Not Found".into())

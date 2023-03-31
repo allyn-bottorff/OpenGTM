@@ -34,5 +34,16 @@
         "fallback_ip": "1.0.0.0",
         "interval": 30,
         "poll_type": "HTTPS"
+    },
+    {
+        "send": "/engine-rest/engine",
+        "name": "workflow",
+        "port": 443,
+        "members": [
+            "ddw02workflow02.vuhl.root.mrc.local",
+            "ddw02workflow03.vuhl.root.mrc.local"
+        ],
+        "interval": 30,
+        "poll_type": "HTTPS"
     }
 ]
