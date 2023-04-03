@@ -110,14 +110,20 @@ impl Pool {
             };
 
             // Resolve the hostname once per iteration
-            // TODO(alb): Handle this error more appropriately
             // This gets the first ipv4 addr and panics if it finds an ipv6
-            let resolved_addr: Ipv4Addr =  match &host_socket
-                .to_socket_addrs().unwrap()
+            let socket = match host_socket.to_socket_addrs() {
+                Ok(s) => s,
+                Err(_) => {
+                    println!("DNS lookup failed for {}", &host);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(self.interval.into())).await;
+                    continue;
+                },
+            };
+            let resolved_addr: Ipv4Addr = match socket
                 .filter(|ip| ip.is_ipv4())
                 .next().expect("No IpV4 addresses found")
                 .ip() {
-                    IpAddr::V4(ip) =>  *ip,
+                    IpAddr::V4(ip) =>  ip,
                     IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}", &host) //This should be impossible.
                 };
 
