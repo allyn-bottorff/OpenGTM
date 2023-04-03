@@ -85,7 +85,6 @@ impl Pool {
         // This should keep the polling fairly even across the typical polling periods and prevent
         // blasting traffic out all at once on startup and then every 30 seconds after.
         //
-        // TODO(alb): HTTP and HTTPS health checks
         // TODO(alb): TCP-only health checks
         // TODO(alb): Health checks which require authentication
         // TODO(alb): De-couple monitors and pools/pool members.
