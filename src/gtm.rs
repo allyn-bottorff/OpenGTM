@@ -42,45 +42,7 @@ impl Member {
 
         // Get the first ipv4 address and ignore the rest
         // Explode if after filtering for an ipv4 addr, an ipv6 addr is parsed.
-        // let resolved_addr: Ipv4Addr = match &host_socket.to_socket_addrs() {
-        //     Ok(socket_iter) => if let Some(socket) = socket_iter.filter(|ip| ip.is_ipv4()).next() {
-        //         match socket.ip() {
-        //             IpAddr::V4(ip) => ip,
-        //             IpAddr::V6(_) => panic!("Found IPv6 addresses while trying to resolve hostname: {}", &host),
-        //         }
-        //     } else {
-        //         [127,0,0,1].into()
-        //     }
-        //     Err(_) => [127,0,0,1].into()
-        // };
-        // let socket = match host_socket_string.to_socket_addrs() {
-        //     Ok(s) => s,
-        //     Err(_) => {
-        //         println!("DNS lookup failed for {}", &host);
-        //     }
-        // };
-        // let resolved_addr: Ipv4Addr = match socket
-        //         .filter(|ip| ip.is_ipv4())
-        //         .next().expect("No IpV4 addresses found")
-        //         .ip() {
-        //             IpAddr::V4(ip) =>  ip,
-        //             IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}", &host) //This should be impossible.
-        //         };
-
-        // let resolved_addr: Ipv4Addr = match &host_socket
-        //     .to_socket_addrs()
-        //     .filter(|ip| ip.is_ipv4())
-        //     .next()
-        //     .unwrap()
-        //     .ip()
-        // {
-        //     IpAddr::V4(ip) => *ip,
-        //     IpAddr::V6(_) => panic!(
-        //     "Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}",
-        //     &host
-        // ), //This should be impossible.
-        // };
-        //
+        // TODO(alb): this could probably be refactored to make it easier to read
         let resolved_addr: IpAddr = match host_socket_string.to_socket_addrs() {
             Ok(socket) => match socket.filter(|ip| ip.is_ipv4()).next() {
                 Some(socket_addr) => socket_addr.ip(),
