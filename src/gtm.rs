@@ -38,30 +38,68 @@ pub struct Member {
 }
 impl Member {
     pub fn new(host: &String) -> Member {
-        let host_socket = format!("{}:{}", host, 443);
+        let host_socket_string = format!("{}:{}", host, 443);
 
         // Get the first ipv4 address and ignore the rest
         // Explode if after filtering for an ipv4 addr, an ipv6 addr is parsed.
-        let resolved_addr: Ipv4Addr = match &host_socket
-            .to_socket_addrs()
-            .unwrap()
-            .filter(|ip| ip.is_ipv4())
-            .next()
-            .unwrap()
-            .ip()
-        {
-            IpAddr::V4(ip) => *ip,
-            IpAddr::V6(_) => panic!(
-            "Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}",
-            &host
-        ), //This should be impossible.
+        // let resolved_addr: Ipv4Addr = match &host_socket.to_socket_addrs() {
+        //     Ok(socket_iter) => if let Some(socket) = socket_iter.filter(|ip| ip.is_ipv4()).next() {
+        //         match socket.ip() {
+        //             IpAddr::V4(ip) => ip,
+        //             IpAddr::V6(_) => panic!("Found IPv6 addresses while trying to resolve hostname: {}", &host),
+        //         }
+        //     } else {
+        //         [127,0,0,1].into()
+        //     }
+        //     Err(_) => [127,0,0,1].into()
+        // };
+        // let socket = match host_socket_string.to_socket_addrs() {
+        //     Ok(s) => s,
+        //     Err(_) => {
+        //         println!("DNS lookup failed for {}", &host);
+        //     }
+        // };
+        // let resolved_addr: Ipv4Addr = match socket
+        //         .filter(|ip| ip.is_ipv4())
+        //         .next().expect("No IpV4 addresses found")
+        //         .ip() {
+        //             IpAddr::V4(ip) =>  ip,
+        //             IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}", &host) //This should be impossible.
+        //         };
+
+        // let resolved_addr: Ipv4Addr = match &host_socket
+        //     .to_socket_addrs()
+        //     .filter(|ip| ip.is_ipv4())
+        //     .next()
+        //     .unwrap()
+        //     .ip()
+        // {
+        //     IpAddr::V4(ip) => *ip,
+        //     IpAddr::V6(_) => panic!(
+        //     "Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}",
+        //     &host
+        // ), //This should be impossible.
+        // };
+        //
+        let resolved_addr: IpAddr = match host_socket_string.to_socket_addrs() {
+            Ok(socket) => match socket.filter(|ip| ip.is_ipv4()).next() {
+                Some(socket_addr) => socket_addr.ip(),
+                None => [127,0,0,1].into(),
+            },
+            Err(_) => [127,0,0,1].into(),
+            };
+
+        let resolved_v4 = match resolved_addr{
+            IpAddr::V4(ip) => ip,
+            IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6  addresses while trying to resolve hostname: {}", &host),
         };
 
         Member {
             host: host.clone(),
-            ip: resolved_addr,
+            ip: resolved_v4,
             healthy: false,
         }
+
     }
 }
 
@@ -97,16 +135,13 @@ impl Pool {
 
         let host_socket = format!("{}:{}", host, self.port);
 
-
         loop {
             let client = match self.poll_type {
                 PollType::HTTPS => reqwest::Client::builder()
                     .danger_accept_invalid_certs(true)
                     .build()
                     .unwrap(),
-                PollType::HTTP =>  reqwest::Client::builder()
-                    .build()
-                    .unwrap(),
+                PollType::HTTP => reqwest::Client::builder().build().unwrap(),
             };
 
             // Resolve the hostname once per iteration
@@ -115,9 +150,10 @@ impl Pool {
                 Ok(s) => s,
                 Err(_) => {
                     println!("DNS lookup failed for {}", &host);
-                    tokio::time::sleep(tokio::time::Duration::from_secs(self.interval.into())).await;
+                    tokio::time::sleep(tokio::time::Duration::from_secs(self.interval.into()))
+                        .await;
                     continue;
-                },
+                }
             };
             let resolved_addr: Ipv4Addr = match socket
                 .filter(|ip| ip.is_ipv4())
