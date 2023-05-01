@@ -44,7 +44,7 @@ impl Member {
         // Explode if after filtering for an ipv4 addr, an ipv6 addr is parsed.
         // TODO(alb): this could probably be refactored to make it easier to read
         let resolved_addr: IpAddr = match host_socket_string.to_socket_addrs() {
-            Ok(socket) => match socket.filter(|ip| ip.is_ipv4()).next() {
+            Ok(mut socket) => match socket.find(|ip| ip.is_ipv4()) {
                 Some(socket_addr) => socket_addr.ip(),
                 None => [127,0,0,1].into(),
             },
@@ -107,7 +107,7 @@ impl Pool {
 
             // Resolve the hostname once per iteration
             // This gets the first ipv4 addr and panics if it finds an ipv6
-            let socket = match host_socket.to_socket_addrs() {
+            let mut socket = match host_socket.to_socket_addrs() {
                 Ok(s) => s,
                 Err(_) => {
                     println!("DNS lookup failed for {}", &host);
@@ -117,14 +117,14 @@ impl Pool {
                 }
             };
             let resolved_addr: Ipv4Addr = match socket
-                .filter(|ip| ip.is_ipv4())
-                .next().expect("No IpV4 addresses found")
+                .find(|ip| ip.is_ipv4()).expect("No IpV4 addresses found")
                 .ip() {
                     IpAddr::V4(ip) =>  ip,
                     IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}", &host) //This should be impossible.
                 };
 
             let req = client.get(&url).build().expect("Failed to build request.");
+
 
             match client.execute(req).await {
                 Ok(r) => {
