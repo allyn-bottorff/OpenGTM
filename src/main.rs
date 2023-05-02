@@ -157,7 +157,10 @@ async fn info(
         if let Some(member) = healthy_members.first() {
             (StatusCode::OK, member.ip.to_string())
         } else {
-            (StatusCode::NOT_FOUND, "No healthy members and no fallback".into())
+            (
+                StatusCode::NOT_FOUND,
+                "No healthy members and no fallback".into(),
+            )
         }
     } else {
         (StatusCode::NOT_FOUND, "Not Found".into())
@@ -198,7 +201,5 @@ mod tests {
     // use super::*;
 
     #[test]
-    fn test_the_tests() {
-
-    }
+    fn test_the_tests() {}
 }
