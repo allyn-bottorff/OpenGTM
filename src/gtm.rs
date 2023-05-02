@@ -46,10 +46,10 @@ impl Member {
         let resolved_addr: IpAddr = match host_socket_string.to_socket_addrs() {
             Ok(mut socket) => match socket.find(|ip| ip.is_ipv4()) {
                 Some(socket_addr) => socket_addr.ip(),
-                None => [127,0,0,1].into(),
+                None => [127, 0, 0, 1].into(),
             },
-            Err(_) => [127,0,0,1].into(),
-            };
+            Err(_) => [127, 0, 0, 1].into(),
+        };
 
         let resolved_v4 = match resolved_addr{
             IpAddr::V4(ip) => ip,
@@ -61,7 +61,6 @@ impl Member {
             ip: resolved_v4,
             healthy: false,
         }
-
     }
 }
 
@@ -124,7 +123,6 @@ impl Pool {
                 };
 
             let req = client.get(&url).build().expect("Failed to build request.");
-
 
             match client.execute(req).await {
                 Ok(r) => {
