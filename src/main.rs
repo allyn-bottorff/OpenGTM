@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/healthz", get(healthz))
         .route("/livez", get(livez))
         .route("/info", get(info))
-        .route("/priority-order", get(info))
+        .route("/priority-order", get(handle_priority_order))
         .route("/randommember", get(info))
         .route("/reset", get(reset))
         .with_state(t);
