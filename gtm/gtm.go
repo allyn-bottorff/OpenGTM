@@ -1,21 +1,29 @@
+// Copyright 2023 Allyn L. Bottorff
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package gtm
 
-
 import (
-
 	"context"
 	"net"
 
-	
 	"github.com/coredns/coredns/plugin"
-	"github.com/coredns/coredns/request"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
+	"github.com/coredns/coredns/request"
 
 	"github.com/miekg/dns"
-
 )
-
-
 
 type Gtm struct {
 	Next plugin.Handler
@@ -59,7 +67,6 @@ func (r *ResponseHandler) WriteMsg(res *dns.Msg) error {
 	rr.(*dns.A).A = net.ParseIP(ip)
 
 	res.Answer = []dns.RR{rr}
-
 
 	return r.ResponseWriter.WriteMsg(res)
 }
