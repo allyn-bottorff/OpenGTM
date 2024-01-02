@@ -62,7 +62,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/reset", get(reset))
         .with_state(t);
 
-    tokio::spawn(axum::Server::bind(&addr).serve(app.into_make_service()));
+    tokio::spawn(
+        axum::Server::bind(&addr)
+            .tcp_nodelay(true)
+            .serve(app.into_make_service()),
+    );
 
     // -----------------------------------------------------------------------
     // HEALTH CHECKER SECTION
