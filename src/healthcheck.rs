@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use axum::http::StatusCode;
+use rand::prelude::*;
 use reqwest;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -108,6 +109,10 @@ impl Pool {
         };
 
         let host_socket = format!("{}:{}", host, self.port);
+
+        let backoff = rand::thread_rng().gen_range(0..=self.interval);
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(backoff.into())).await;
 
         loop {
             let client = match self.poll_type {
