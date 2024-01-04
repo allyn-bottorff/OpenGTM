@@ -24,6 +24,8 @@ use axum::{
 // use reqwest;
 use serde::Deserialize;
 // use serde_json;
+use env_logger;
+use log::{debug, info, warn};
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
@@ -42,7 +44,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // API SECTION
     // -----------------------------------------------------------------------
 
-    println!("Starting health checkers");
+    env_logger::init();
+
+    info!("{}", "Starting API");
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 

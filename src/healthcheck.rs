@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use axum::http::StatusCode;
+use log::{debug, info, warn};
 use rand::prelude::*;
 use reqwest;
 use serde::Deserialize;
@@ -103,6 +104,8 @@ impl Pool {
         // TODO(alb): Health checks which require authentication
         // TODO(alb): De-couple monitors and pools/pool members.
 
+        info!("Starting poller for {}: {}", &self.name, &host);
+
         let url = match self.poll_type {
             PollType::HTTP => format!("http://{}:{}{}", host, self.port, self.send),
             PollType::HTTPS => format!("https://{}:{}{}", host, self.port, self.send),
@@ -111,6 +114,8 @@ impl Pool {
         let host_socket = format!("{}:{}", host, self.port);
 
         let backoff = rand::thread_rng().gen_range(0..=self.interval);
+
+        info!("Waiting {} second before starting poll for {}: {}", backoff, &self.name, &host);
 
         tokio::time::sleep(tokio::time::Duration::from_secs(backoff.into())).await;
 
@@ -128,7 +133,7 @@ impl Pool {
             let mut socket = match host_socket.to_socket_addrs() {
                 Ok(s) => s,
                 Err(_) => {
-                    println!("DNS lookup failed for {}", &host);
+                    warn!("DNS lookup failed for {}", &host);
                     tokio::time::sleep(tokio::time::Duration::from_secs(self.interval.into()))
                         .await;
                     continue;
@@ -143,10 +148,12 @@ impl Pool {
 
             let req = client.get(&url).build().expect("Failed to build request.");
 
+            info!("Checking health at {} for {}", &url, &self.name);
             match client.execute(req).await {
                 Ok(r) => {
                     match r.status() {
                         StatusCode::OK => {
+                            info!("Host: {} marked healthy for {}", &host, &self.name);
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
                                 for member in items.iter_mut() {
@@ -160,6 +167,7 @@ impl Pool {
                             }
                         }
                         StatusCode::SERVICE_UNAVAILABLE => {
+                            info!("Host: {} marked unhealthy for {}", &host, &self.name);
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
                                 for member in items.iter_mut() {
