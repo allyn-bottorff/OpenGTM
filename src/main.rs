@@ -46,7 +46,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     env_logger::init();
 
-    info!("{}", "Starting API");
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
@@ -66,11 +65,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/reset", get(reset))
         .with_state(t);
 
+    info!("Starting API");
+
     tokio::spawn(
         axum::Server::bind(&addr)
             .tcp_nodelay(true)
             .serve(app.into_make_service()),
     );
+    info!("API started");
 
     // -----------------------------------------------------------------------
     // HEALTH CHECKER SECTION
@@ -136,6 +138,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // if something goes wrong.
 
     let mut join_set = JoinSet::new();
+
+    info!("Starting health checkers");
 
     for c in conf {
         for member in &c.members {
