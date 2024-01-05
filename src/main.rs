@@ -24,6 +24,8 @@ use axum::{
 // use reqwest;
 use serde::Deserialize;
 // use serde_json;
+use env_logger;
+use log::{debug, info, warn};
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
@@ -42,7 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // API SECTION
     // -----------------------------------------------------------------------
 
-    println!("Starting health checkers");
+    env_logger::init();
+
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
@@ -62,11 +65,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/reset", get(reset))
         .with_state(t);
 
+    info!("Starting API");
+
     tokio::spawn(
         axum::Server::bind(&addr)
             .tcp_nodelay(true)
             .serve(app.into_make_service()),
     );
+    info!("API started");
 
     // -----------------------------------------------------------------------
     // HEALTH CHECKER SECTION
@@ -132,6 +138,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // if something goes wrong.
 
     let mut join_set = JoinSet::new();
+
+    info!("Starting health checkers");
 
     for c in conf {
         for member in &c.members {
