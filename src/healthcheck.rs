@@ -20,6 +20,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
+use tokio::{time, net};
 
 // struct GTMApp {
 //     name: String,
@@ -103,15 +104,20 @@ impl Pool {
         info!("Starting poller for {}: {}", &self.name, &host);
 
         let backoff = rand::thread_rng().gen_range(0..=self.interval);
+        let host_socket = format!("{}:{}", host, &self.port);
 
         info!(
             "Waiting {} seconds before starting poll for {}: {}",
             backoff, &self.name, &host
         );
-        tokio::time::sleep(tokio::time::Duration::from_secs(backoff.into())).await;
+        time::sleep(time::Duration::from_secs(backoff.into())).await;
 
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(self.interval.into())).await;
+            let conn = net::TcpStream::connect(&host_socket).await;
+            match conn {
+                Ok(_) => 
+            }
+            time::sleep(time::Duration::from_secs(self.interval.into())).await;
         }
     }
 
@@ -142,7 +148,7 @@ impl Pool {
             backoff, &self.name, &host
         );
 
-        tokio::time::sleep(tokio::time::Duration::from_secs(backoff.into())).await;
+        time::sleep(time::Duration::from_secs(backoff.into())).await;
 
         loop {
             let client = match self.poll_type {
@@ -159,7 +165,7 @@ impl Pool {
                 Ok(s) => s,
                 Err(_) => {
                     warn!("DNS lookup failed for {}", &host);
-                    tokio::time::sleep(tokio::time::Duration::from_secs(self.interval.into()))
+                    time::sleep(time::Duration::from_secs(self.interval.into()))
                         .await;
                     continue;
                 }
@@ -224,7 +230,7 @@ impl Pool {
                 }
             };
 
-            tokio::time::sleep(tokio::time::Duration::from_secs(self.interval.into())).await;
+            time::sleep(time::Duration::from_secs(self.interval.into())).await;
         }
     }
 }
