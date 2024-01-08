@@ -12,7 +12,7 @@ API to do dynamic lookups.
 
 # Configuration
 
-[source, json]
+[source]
 ----
 [
     {
@@ -44,14 +44,14 @@ API to do dynamic lookups.
 
 # Running
 
-[source, shell]
+[source]
 ----
 cargo run
 ----
 Health Checker currently uses https://docs.rs/env_logger/latest/env_logger/[env_logger]
 for setting the log level. E.g.
 
-[source, shell]
+[source]
 ----
 RUST_LOG=info cargo run
 ----
