@@ -92,15 +92,37 @@ pub struct Pool {
 }
 
 impl Pool {
-    /// Long lived task which can poll the target host the interval and set the result IP in the map.
+    /// Long lived poller for TCP health checks.
+    pub async fn tcp_poller(self, host: String, cache: Arc<Mutex<HashMap<String, Vec<Member>>>>) {
+        // Set backoff to a random integer value between 0 and the interval. At the end of the loop,
+        // sleep the difference between the backoff and the configured interval. Ater the sleep, set
+        // the interval to 0 so that the sleep is now the same as the interval.
+        // This should keep the polling fairly even across the typical polling periods and prevent
+        // blasting traffic out all at once on startup and then every 30 seconds after.
+
+        info!("Starting poller for {}: {}", &self.name, &host);
+
+        let backoff = rand::thread_rng().gen_range(0..=self.interval);
+
+        info!(
+            "Waiting {} seconds before starting poll for {}: {}",
+            backoff, &self.name, &host
+        );
+        tokio::time::sleep(tokio::time::Duration::from_secs(backoff.into())).await;
+
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(self.interval.into())).await;
+        }
+    }
+
+    /// Long lived poller for HTTP(s) health checks.
     pub async fn http_poller(self, host: String, cache: Arc<Mutex<HashMap<String, Vec<Member>>>>) {
-        // Set backoff to random integer value between 0 and the interval. At the end of the loop,
+        // Set backoff to a random integer value between 0 and the interval. At the end of the loop,
         // sleep the difference between the backoff and the configured interval. Ater the sleep, set
         // the interval to 0 so that the sleep is now the same as the interval.
         // This should keep the polling fairly even across the typical polling periods and prevent
         // blasting traffic out all at once on startup and then every 30 seconds after.
         //
-        // TODO(alb): TCP-only health checks
         // TODO(alb): Health checks which require authentication
         // TODO(alb): De-couple monitors and pools/pool members.
 
@@ -115,7 +137,10 @@ impl Pool {
 
         let backoff = rand::thread_rng().gen_range(0..=self.interval);
 
-        info!("Waiting {} second before starting poll for {}: {}", backoff, &self.name, &host);
+        info!(
+            "Waiting {} seconds before starting poll for {}: {}",
+            backoff, &self.name, &host
+        );
 
         tokio::time::sleep(tokio::time::Duration::from_secs(backoff.into())).await;
 
