@@ -151,7 +151,19 @@ impl Pool {
                         continue;
                     }
                 }
-                Err(_) => {}
+                Err(_) => {
+                    info!("Host: {} marked unhealthy for {}", &host, &self.name);
+                    let mut members = cache.lock().unwrap();
+                    if let Some(items) = members.get_mut(&self.name) {
+                        for member in items.iter_mut() {
+                            if member.host == host {
+                                member.healthy = false;
+                            }
+                        }
+                    } else {
+                        continue;
+                    }
+                }
             }
             time::sleep(time::Duration::from_secs(self.interval.into())).await;
         }
