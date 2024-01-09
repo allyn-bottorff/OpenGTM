@@ -1,0 +1,12 @@
+FROM docker.io/rust:slim-buster as builder
+WORKDIR /app
+RUN chown -R $(whoami) /app
+# COPY ./Cargo.toml ./
+# COPY ./Cargo.lock ./
+# COPY ./src/ ./src/
+COPY . .
+RUN cargo build --release
+
+FROM cgr.dev/chainguard/glibc-dynamic:latest
+COPY --from=builder --chown=nonroot:nonroot /app/target/release/lbtestapi /usr/local/bin/lbtestapi
+CMD ["/usr/local/bin/lbtestapi"]

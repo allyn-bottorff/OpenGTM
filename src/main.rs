@@ -25,7 +25,7 @@ use axum::{
 use serde::Deserialize;
 // use serde_json;
 use env_logger;
-use log::{debug, info, warn};
+use log::info;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
@@ -45,7 +45,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------------
 
     env_logger::init();
-
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
@@ -145,7 +144,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         for member in &c.members {
             let t = Arc::clone(&cache);
             let name = member.clone();
-            join_set.spawn(c.clone().http_poller(name, t));
+
+            match c.poll_type {
+                healthcheck::PollType::HTTP => join_set.spawn(c.clone().http_poller(name, t)),
+                healthcheck::PollType::TCP => join_set.spawn(c.clone().tcp_poller(name, t)),
+            };
         }
     }
 
