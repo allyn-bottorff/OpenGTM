@@ -46,7 +46,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     env_logger::init();
 
-
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
     let cache: Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>> =
@@ -145,7 +144,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         for member in &c.members {
             let t = Arc::clone(&cache);
             let name = member.clone();
-            join_set.spawn(c.clone().http_poller(name, t));
+
+            match c.poll_type {
+                healthcheck::PollType::HTTP => join_set.spawn(c.clone().http_poller(name, t)),
+                healthcheck::PollType::TCP => join_set.spawn(c.clone().tcp_poller(name, t)),
+            };
         }
     }
 
