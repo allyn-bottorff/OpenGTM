@@ -25,7 +25,7 @@ use axum::{
 use serde::Deserialize;
 // use serde_json;
 use env_logger;
-use log::{debug, info, warn};
+use log::info;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;

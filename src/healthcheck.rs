@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use axum::http::StatusCode;
-use log::{debug, info, warn};
+use log::{info, warn};
 use rand::prelude::*;
 use reqwest;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
-use tokio::{time, net};
+use tokio::{net, time};
 
 // struct GTMApp {
 //     name: String,
@@ -43,8 +43,7 @@ use tokio::{time, net};
 #[derive(Clone, Deserialize)]
 pub enum PollType {
     HTTP,
-    HTTPS,
-    // TCP, // TODO(alb): support basic TCP polling
+    TCP,
 }
 
 #[derive(Clone)]
@@ -82,6 +81,12 @@ impl Member {
 }
 
 #[derive(Clone, Deserialize)]
+pub struct HTTPSOptions {
+    https_enabled: bool,
+    https_require_validity: bool,
+}
+
+#[derive(Clone, Deserialize)]
 pub struct Pool {
     pub send: String,
     pub name: String, //FQDN label for load balanced app
@@ -89,6 +94,7 @@ pub struct Pool {
     pub interval: u16,
     pub members: Vec<String>, //Pool member FQDNs
     pub poll_type: PollType,
+    pub https_options: Option<HTTPSOptions>,
     pub fallback_ip: Option<Ipv4Addr>,
 }
 
@@ -113,9 +119,39 @@ impl Pool {
         time::sleep(time::Duration::from_secs(backoff.into())).await;
 
         loop {
+            // Resolve the hostname once per iteration
+            // This gets the first ipv4 addr and panics if it finds an ipv6
+            let mut socket = match host_socket.to_socket_addrs() {
+                Ok(s) => s,
+                Err(_) => {
+                    warn!("DNS lookup failed for {}", &host);
+                    time::sleep(time::Duration::from_secs(self.interval.into())).await;
+                    continue;
+                }
+            };
+            let resolved_addr: Ipv4Addr = match socket
+                .find(|ip| ip.is_ipv4()).expect("No IpV4 addresses found")
+                .ip() {
+                    IpAddr::V4(ip) =>  ip,
+                    IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}", &host) //This should be impossible.
+                };
             let conn = net::TcpStream::connect(&host_socket).await;
             match conn {
-                Ok(_) => 
+                Ok(_) => {
+                    info!("Host: {} marked healthy for {}", &host, &self.name);
+                    let mut members = cache.lock().unwrap();
+                    if let Some(items) = members.get_mut(&self.name) {
+                        for member in items.iter_mut() {
+                            if member.host == host {
+                                member.healthy = true;
+                                member.ip = resolved_addr;
+                            }
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+                Err(_) => {}
             }
             time::sleep(time::Duration::from_secs(self.interval.into())).await;
         }
@@ -134,9 +170,19 @@ impl Pool {
 
         info!("Starting poller for {}: {}", &self.name, &host);
 
-        let url = match self.poll_type {
-            PollType::HTTP => format!("http://{}:{}{}", host, self.port, self.send),
-            PollType::HTTPS => format!("https://{}:{}{}", host, self.port, self.send),
+        let https_mode = match &self.https_options {
+            Some(o) => o.https_enabled,
+            None => false,
+        };
+
+        let https_require_validity = match &self.https_options {
+            Some(o) => o.https_require_validity,
+            None => false,
+        };
+
+        let url = match &https_mode {
+            true => format!("https://{}:{}{}", host, self.port, self.send),
+            false => format!("http://{}:{}{}", host, self.port, self.send),
         };
 
         let host_socket = format!("{}:{}", host, self.port);
@@ -151,12 +197,12 @@ impl Pool {
         time::sleep(time::Duration::from_secs(backoff.into())).await;
 
         loop {
-            let client = match self.poll_type {
-                PollType::HTTPS => reqwest::Client::builder()
-                    .danger_accept_invalid_certs(true)
+            let client = match &https_mode {
+                true => reqwest::Client::builder()
+                    .danger_accept_invalid_certs(https_require_validity)
                     .build()
                     .unwrap(),
-                PollType::HTTP => reqwest::Client::builder().build().unwrap(),
+                false => reqwest::Client::builder().build().unwrap(),
             };
 
             // Resolve the hostname once per iteration
@@ -165,8 +211,7 @@ impl Pool {
                 Ok(s) => s,
                 Err(_) => {
                     warn!("DNS lookup failed for {}", &host);
-                    time::sleep(time::Duration::from_secs(self.interval.into()))
-                        .await;
+                    time::sleep(time::Duration::from_secs(self.interval.into())).await;
                     continue;
                 }
             };
