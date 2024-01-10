@@ -183,7 +183,7 @@ async fn livez() -> (StatusCode, &'static str) {
     (StatusCode::OK, "OK")
 }
 
-/// Get the current value of the "localhost" entry of the host:ip Map
+/// Get the first healthy member of the requested pool
 async fn info(
     q: Query<QueryParams>,
     State(state): State<Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>>>,

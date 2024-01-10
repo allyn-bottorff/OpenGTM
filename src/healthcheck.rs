@@ -81,12 +81,14 @@ impl Member {
 }
 
 #[derive(Clone, Deserialize)]
+///Configuration relevant to the HTTP poll type
 pub struct HTTPSOptions {
     https_enabled: bool,
     https_require_validity: bool,
 }
 
 #[derive(Clone, Deserialize)]
+///Configuration relevant to a pool to be checked.
 pub struct Pool {
     pub send: String,
     pub name: String, //FQDN label for load balanced app
