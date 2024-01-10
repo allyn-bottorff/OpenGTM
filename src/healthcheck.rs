@@ -82,21 +82,21 @@ impl Member {
 
 #[derive(Clone, Deserialize)]
 ///Configuration relevant to the HTTP poll type
-pub struct HTTPSOptions {
+pub struct HTTPOptions {
     https_enabled: bool,
-    https_require_validity: bool,
+    https_require_validity: Option<bool>,
+    send: String,
 }
 
 #[derive(Clone, Deserialize)]
 ///Configuration relevant to a pool to be checked.
 pub struct Pool {
-    pub send: String,
     pub name: String, //FQDN label for load balanced app
     pub port: u16,
     pub interval: u16,
     pub members: Vec<String>, //Pool member FQDNs
     pub poll_type: PollType,
-    pub https_options: Option<HTTPSOptions>,
+    pub http_options: Option<HTTPOptions>,
     pub fallback_ip: Option<Ipv4Addr>,
 }
 
@@ -184,19 +184,17 @@ impl Pool {
 
         info!("Starting poller for {}: {}", &self.name, &host);
 
-        let https_mode = match &self.https_options {
-            Some(o) => o.https_enabled,
-            None => false,
+        let http_options = match &self.http_options {
+            Some(o) => o,
+            None => panic!(
+                "No http options found for http poller on pool {}",
+                &self.name
+            ),
         };
 
-        let https_require_validity = match &self.https_options {
-            Some(o) => o.https_require_validity,
-            None => false,
-        };
-
-        let url = match &https_mode {
-            true => format!("https://{}:{}{}", host, self.port, self.send),
-            false => format!("http://{}:{}{}", host, self.port, self.send),
+        let url = match http_options.https_enabled {
+            true => format!("https://{}:{}{}", host, self.port, http_options.send),
+            false => format!("http://{}:{}{}", host, self.port, http_options.send),
         };
 
         let host_socket = format!("{}:{}", host, self.port);
@@ -211,9 +209,11 @@ impl Pool {
         time::sleep(time::Duration::from_secs(backoff.into())).await;
 
         loop {
-            let client = match &https_mode {
+            let client = match &http_options.https_enabled {
                 true => reqwest::Client::builder()
-                    .danger_accept_invalid_certs(https_require_validity)
+                    .danger_accept_invalid_certs(
+                        !http_options.https_require_validity.unwrap_or(false),
+                    )
                     .build()
                     .unwrap(),
                 false => reqwest::Client::builder().build().unwrap(),
