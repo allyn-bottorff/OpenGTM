@@ -25,7 +25,7 @@ use axum::{
 use serde::Deserialize;
 // use serde_json;
 use env_logger;
-use log::info;
+use log::{error, info};
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
@@ -36,6 +36,11 @@ use tokio::task::JoinSet;
 #[derive(Deserialize)]
 struct QueryParams {
     name: String,
+}
+
+#[derive(Deserialize)]
+struct Config {
+    pools: Vec<healthcheck::Pool>,
 }
 
 #[tokio::main]
@@ -77,43 +82,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // HEALTH CHECKER SECTION
     // -----------------------------------------------------------------------
 
-    // let conf = vec![
-    //     gtm::Pool {
-    //         send: String::from("/healthy"),
-    //         name: String::from("svc1"),
-    //         port: 9090,
-    //         members: vec!["localhost".into()],
-    //         interval: 5,
-    //         poll_type: gtm::PollType::HTTP,
-    //     },
-    //     gtm::Pool {
-    //         send: String::from("/healthy"),
-    //         name: String::from("svc2"),
-    //         members: vec!["localhost".into()],
-    //         port: 9090,
-    //         interval: 15,
-    //         poll_type: gtm::PollType::HTTP,
-    //     },
-    //     gtm::Pool {
-    //         send: String::from("/unhealthy"),
-    //         name: String::from("svc3"),
-    //         members: vec!["localhost".into()],
-    //         port: 9090,
-    //         interval: 12,
-    //         poll_type: gtm::PollType::HTTP,
-    //     },
-    // ];
-    let conf = read_config(String::from("./conf.json")).unwrap();
+    let conf = match read_config(String::from("./conf.json")) {
+        Ok(c) => c,
+        Err(e) => {
+            error!("Failed to parse config file");
+            panic!("{e}");
+        }
+    };
 
-    for c in &conf {
+    for p in &conf.pools {
         let t = Arc::clone(&cache);
         let mut items = t.lock().unwrap();
-        let mut members: Vec<healthcheck::Member> = c
+        let mut members: Vec<healthcheck::Member> = p
             .members
             .iter()
             .map(|m| healthcheck::Member::new(m))
             .collect();
-        if let Some(fallback_ip) = c.fallback_ip {
+        if let Some(fallback_ip) = p.fallback_ip {
             members.push(healthcheck::Member {
                 host: "fallback".into(),
                 ip: fallback_ip,
@@ -121,7 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         }
 
-        items.insert(c.name.clone(), members);
+        items.insert(p.name.clone(), members);
     }
 
     // Run the "main" loop which calls other apis and updates the cache
@@ -140,7 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting health checkers");
 
-    for c in conf {
+    for c in conf.pools {
         for member in &c.members {
             let t = Arc::clone(&cache);
             let name = member.clone();
@@ -281,12 +266,12 @@ async fn reset(
 }
 
 /// Read config file
-fn read_config(path: String) -> Result<Vec<healthcheck::Pool>, Box<dyn Error>> {
+fn read_config(path: String) -> Result<Config, Box<dyn Error>> {
     // let mut conf: Vec<gtm::Pool> = Vec::new();
     let file = File::open(path)?;
     let reader = BufReader::new(file);
 
-    let conf: Vec<healthcheck::Pool> = serde_json::from_reader(reader)?;
+    let conf: Config = serde_json::from_reader(reader)?;
 
     Ok(conf)
 }

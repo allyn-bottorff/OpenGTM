@@ -14,32 +14,54 @@ API to do dynamic lookups.
 
 [source, json]
 ----
-[
+{
+  "pools": [
     {
-        "send": "/health",
-        "name": "lbtests",
-        "port": 8080,
-        "members": [
-            "host1.example.com",
-            "host2.example.com"
-        ],
-        "fallback_ip": "127.0.0.0",
-        "interval": 30,
-        "poll_type": "HTTP"
+      "name": "lbtests1",
+      "port": 8080,
+      "members": [
+        "127.0.0.2",
+        "127.0.0.3"
+      ],
+      "fallback_ip": "127.0.0.0",
+      "interval": 30,
+      "poll_type": "TCP"
     },
     {
+      "send": "/health",
+      "name": "lbtests2",
+      "port": 8080,
+      "members": [
+        "127.0.0.4",
+        "127.0.0.5"
+      ],
+      "fallback_ip": "127.0.0.0",
+      "interval": 30,
+      "poll_type": "HTTP",
+      "http_options": {
         "send": "/health",
-        "name": "lbtest2",
-        "port": 8080,
-        "members": [
-            "host1.example.com",
-            "host2.example.com"
-        ],
-        "fallback_ip": "127.0.0.0",
-        "interval": 30,
-        "poll_type": "HTTPS"
+        "https_enabled": false,
+        "https_require_validity": false
+      }
+    },
+    {
+      "send": "/health",
+      "name": "lbtests3",
+      "port": 8080,
+      "members": [
+        "127.0.0.6",
+        "127.0.0.7"
+      ],
+      "fallback_ip": "127.0.0.0",
+      "interval": 30,
+      "poll_type": "HTTP",
+      "http_options": {
+        "send": "/health",
+        "https_enabled": false
+      }
     }
-]
+  ]
+}
 ----
 
 == Running
