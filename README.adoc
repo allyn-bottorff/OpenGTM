@@ -1,16 +1,18 @@
-= Health Checker
-Health checking service
+= OpenGTM
 
-Health checking service which performs network based health checks and HTTP API
-responses. This is intended to be coupled with a CoreDNS plugin which calls the
-API to do dynamic lookups.
+Global Traffic Managment (GTM) service which can provide health check aware
+responses to DNS queries. 
 
 == Structure
 
-- Axum API framework
-- Tokio-based asynchronous health checking tasks
+* Rust health checking service
+** Axum API framework
+** Tokio-based asynchronous health checking tasks
+* CoreDNS plugin
+** Makes API calls to the health checking service to determine the correct
+answer to a DNS query
 
-== Configuration
+== Health Checker Configuration
 
 [source, json]
 ----
