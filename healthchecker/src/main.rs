@@ -133,7 +133,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let name = member.clone();
 
             match c.poll_type {
-                healthcheck::PollType::HTTP => join_set.spawn(c.clone().http_poller(name, t)),
+                healthcheck::PollType::HTTPStandard => join_set.spawn(c.clone().http_poller(name, t)),
+                healthcheck::PollType::HTTPCustom => join_set.spawn(c.clone().http_poller(name, t)),
                 healthcheck::PollType::TCP => join_set.spawn(c.clone().tcp_poller(name, t)),
             };
         }

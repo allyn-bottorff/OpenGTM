@@ -24,7 +24,8 @@ use crate::HealthTable;
 
 #[derive(Clone, Deserialize)]
 pub enum PollType {
-    HTTP,
+    HTTPStandard,
+    HTTPCustom,
     TCP,
 }
 
@@ -162,7 +163,6 @@ impl Pool {
         // blasting traffic out all at once on startup and then every 30 seconds after.
         //
         // TODO(alb): Health checks which require authentication
-        // TODO(alb): De-couple monitors and pools/pool members.
 
         info!("Starting poller for {}: {}", &self.name, &host);
 
