@@ -16,37 +16,19 @@ use axum::http::StatusCode;
 use log::{info, warn};
 use rand::prelude::*;
 use reqwest;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use tokio::{net, time};
 
-// struct GTMApp {
-//     name: String,
-//     monitor: Monitor, //Monitor parameters to be applied to each member
-//     pool: Vec<Member>, //members to be monitored
-// }
-//
-// struct Monitor {
-//     receive_up: String, // If this text exists anywhere in the response, the target is considered
-//     // healthy. Does not take priority over `receiveDown`.
-//     receive_down: String, // If this text exists anywhere in teh response, the target is considered
-//     // unhealthy. Takes priority over `receiveUp`.
-//     send: String, // HTTP send string for the health check.
-// }
-//
-// struct Member {
-//     hostname: String,
-//     service_port: u16,
-// }
 #[derive(Clone, Deserialize)]
 pub enum PollType {
     HTTP,
     TCP,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct Member {
     pub host: String,
     pub ip: Ipv4Addr,

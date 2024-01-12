@@ -22,10 +22,10 @@ use axum::{
 };
 
 // use reqwest;
-use serde::Deserialize;
-// use serde_json;
 use env_logger;
 use log::{error, info};
+use serde::Deserialize;
+use serde_json;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
@@ -67,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/priority-order", get(handle_priority_order))
         .route("/randommember", get(info))
         .route("/reset", get(reset))
+        .route("/dump", get(dump_table))
         .with_state(t);
 
     info!("Starting API");
@@ -263,6 +264,15 @@ async fn reset(
     );
 
     (StatusCode::OK, String::from("OK"))
+}
+
+/// Dump the entire state table to a JSON-formatted response
+async fn dump_table(
+    State(state): State<Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>>>,
+) -> (StatusCode, String) {
+    let map = &state.lock().unwrap().clone();
+
+    (StatusCode::OK, serde_json::to_string(map).unwrap())
 }
 
 /// Read config file
