@@ -33,6 +33,7 @@ pub struct Member {
     pub host: String,
     pub ip: Ipv4Addr,
     pub healthy: bool,
+    pub backoff_done: bool,
 }
 impl Member {
     pub fn new(host: &String) -> Member {
@@ -58,6 +59,7 @@ impl Member {
             host: host.clone(),
             ip: resolved_v4,
             healthy: false,
+            backoff_done: false,
         }
     }
 }
