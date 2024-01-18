@@ -318,22 +318,33 @@ impl Pool {
                         }
                     }
                 },
-                Err(_) => {
-                    info!("Host: {} marked unhealthy for {}", &host, &self.name);
-                    let mut members = cache.lock().unwrap();
-                    if let Some(items) = members.get_mut(&self.name) {
-                        for member in items.iter_mut() {
-                            if member.host == host {
-                                member.healthy = false;
-                            }
-                        }
-                    } else {
-                        continue;
-                    }
-                }
+                Err(_) => set_health(&cache, &self.name, &host, &resolved_addr, false)
             };
 
             time::sleep(time::Duration::from_secs(self.interval.into())).await;
+        }
+    }
+}
+
+/// Set the health of the node in the sharead cache
+fn set_health(
+    cache: &HealthTable,
+    pool_name: &String,
+    host: &String,
+    resolved_addr: &Ipv4Addr,
+    health: bool,
+) {
+    match health {
+        true => info!("Host: {} marked healthy for {}", &host, pool_name),
+        false => info!("Host: {} marked unhealthy for {}", &host, pool_name),
+    }
+    let mut members = cache.lock().unwrap();
+    if let Some(items) = members.get_mut(pool_name) {
+        for member in items.iter_mut() {
+            if &member.host == host {
+                member.healthy = health;
+                member.ip = *resolved_addr;
+            }
         }
     }
 }
