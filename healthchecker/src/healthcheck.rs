@@ -128,33 +128,8 @@ impl Pool {
                 };
             let conn = net::TcpStream::connect(&host_socket).await;
             match conn {
-                Ok(_) => {
-                    info!("Host: {} marked healthy for {}", &host, &self.name);
-                    let mut members = cache.lock().unwrap();
-                    if let Some(items) = members.get_mut(&self.name) {
-                        for member in items.iter_mut() {
-                            if member.host == host {
-                                member.healthy = true;
-                                member.ip = resolved_addr;
-                            }
-                        }
-                    } else {
-                        continue;
-                    }
-                }
-                Err(_) => {
-                    info!("Host: {} marked unhealthy for {}", &host, &self.name);
-                    let mut members = cache.lock().unwrap();
-                    if let Some(items) = members.get_mut(&self.name) {
-                        for member in items.iter_mut() {
-                            if member.host == host {
-                                member.healthy = false;
-                            }
-                        }
-                    } else {
-                        continue;
-                    }
-                }
+                Ok(_) => set_health(&cache, &self.name, &host, &resolved_addr, true),
+                Err(_) => set_health(&cache, &self.name, &host, &resolved_addr, false),
             }
             time::sleep(time::Duration::from_secs(self.interval.into())).await;
         }
@@ -238,30 +213,9 @@ impl Pool {
                     // Status code based healthy conditions
                     HTTPReceive::StatusCodes(codes) => {
                         if codes.contains(&r.status().as_u16()) {
-                            info!("Host: {} marked healthy for {}", &host, &self.name);
-                            let mut members = cache.lock().unwrap();
-                            if let Some(items) = members.get_mut(&self.name) {
-                                for member in items.iter_mut() {
-                                    if member.host == host {
-                                        member.healthy = true;
-                                        member.ip = resolved_addr;
-                                    }
-                                }
-                            } else {
-                                continue;
-                            }
+                            set_health(&cache, &self.name, &host, &resolved_addr, true);
                         } else {
-                            info!("Host: {} marked unhealthy for {}", &host, &self.name);
-                            let mut members = cache.lock().unwrap();
-                            if let Some(items) = members.get_mut(&self.name) {
-                                for member in items.iter_mut() {
-                                    if member.host == host {
-                                        member.healthy = false;
-                                    }
-                                }
-                            } else {
-                                continue;
-                            }
+                            set_health(&cache, &self.name, &host, &resolved_addr, false);
                         }
                     }
 
@@ -270,17 +224,7 @@ impl Pool {
                         let r_bytes = match r.bytes().await {
                             Ok(b) => b,
                             Err(e) => {
-                                info!("Host: {} marked unhealthy for {}", &host, &self.name);
-                                let mut members = cache.lock().unwrap();
-                                if let Some(items) = members.get_mut(&self.name) {
-                                    for member in items.iter_mut() {
-                                        if member.host == host {
-                                            member.healthy = false;
-                                        }
-                                    }
-                                } else {
-                                    continue;
-                                }
+                                set_health(&cache, &self.name, &host, &resolved_addr, false);
                                 info!("{e}");
                                 continue;
                             }
@@ -291,49 +235,39 @@ impl Pool {
                             .windows(match_string.as_bytes().len())
                             .any(|window| window == match_string.as_bytes())
                         {
-                            info!("Host: {} marked healthy for {}", &host, &self.name);
-                            let mut members = cache.lock().unwrap();
-                            if let Some(items) = members.get_mut(&self.name) {
-                                for member in items.iter_mut() {
-                                    if member.host == host {
-                                        member.healthy = true;
-                                        member.ip = resolved_addr;
-                                    }
-                                }
-                            } else {
-                                continue;
-                            }
+                            set_health(&cache, &self.name, &host, &resolved_addr, true);
                         } else {
-                            info!("Host: {} marked unhealthy for {}", &host, &self.name);
-                            let mut members = cache.lock().unwrap();
-                            if let Some(items) = members.get_mut(&self.name) {
-                                for member in items.iter_mut() {
-                                    if member.host == host {
-                                        member.healthy = false;
-                                    }
-                                }
-                            } else {
-                                continue;
-                            }
+                            set_health(&cache, &self.name, &host, &resolved_addr, false);
                         }
                     }
                 },
-                Err(_) => {
-                    info!("Host: {} marked unhealthy for {}", &host, &self.name);
-                    let mut members = cache.lock().unwrap();
-                    if let Some(items) = members.get_mut(&self.name) {
-                        for member in items.iter_mut() {
-                            if member.host == host {
-                                member.healthy = false;
-                            }
-                        }
-                    } else {
-                        continue;
-                    }
-                }
+                Err(_) => set_health(&cache, &self.name, &host, &resolved_addr, false),
             };
 
             time::sleep(time::Duration::from_secs(self.interval.into())).await;
+        }
+    }
+}
+
+/// Set the health of the node in the sharead cache
+fn set_health(
+    cache: &HealthTable,
+    pool_name: &String,
+    host: &String,
+    resolved_addr: &Ipv4Addr,
+    health: bool,
+) {
+    match health {
+        true => info!("Host: {} marked healthy for {}", &host, pool_name),
+        false => info!("Host: {} marked unhealthy for {}", &host, pool_name),
+    }
+    let mut members = cache.lock().unwrap();
+    if let Some(items) = members.get_mut(pool_name) {
+        for member in items.iter_mut() {
+            if &member.host == host {
+                member.healthy = health;
+                member.ip = *resolved_addr;
+            }
         }
     }
 }
