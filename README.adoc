@@ -43,7 +43,13 @@ answer to a DNS query
       "http_options": {
         "send": "/health",
         "https_enabled": false,
-        "https_require_validity": false
+        "https_require_validity": false,
+        "receive_up": {
+          "status_codes": [
+            200,
+            503
+          ]
+        }
       }
     },
     {
@@ -59,7 +65,10 @@ answer to a DNS query
       "poll_type": "HTTP",
       "http_options": {
         "send": "/health",
-        "https_enabled": false
+        "https_enabled": false,
+        "receive_up": {
+          "string": "Healthy"
+        }
       }
     }
   ]

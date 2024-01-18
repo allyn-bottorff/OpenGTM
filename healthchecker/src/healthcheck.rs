@@ -28,6 +28,7 @@ pub enum PollType {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
 enum HTTPReceive {
     StatusCodes(Vec<u16>),
     String(String),
