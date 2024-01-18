@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use axum::http::StatusCode;
-use log::{info, warn};
+use log::{error, info, warn};
 use rand::prelude::*;
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -26,6 +25,13 @@ use crate::HealthTable;
 pub enum PollType {
     HTTP,
     TCP,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum HTTPReceive {
+    StatusCodes(Vec<u16>),
+    String(String),
 }
 
 #[derive(Clone, Serialize)]
@@ -68,6 +74,7 @@ pub struct HTTPOptions {
     https_enabled: bool,
     https_require_validity: Option<bool>,
     send: String,
+    receive_up: HTTPReceive,
 }
 
 #[derive(Clone, Deserialize)]
@@ -162,16 +169,18 @@ impl Pool {
         // blasting traffic out all at once on startup and then every 30 seconds after.
         //
         // TODO(alb): Health checks which require authentication
-        // TODO(alb): De-couple monitors and pools/pool members.
 
         info!("Starting poller for {}: {}", &self.name, &host);
 
         let http_options = match &self.http_options {
             Some(o) => o,
-            None => panic!(
-                "No http options found for http poller on pool {}",
-                &self.name
-            ),
+            None => {
+                error!(
+                    "No http options found for http poller on pool {}. Exiting poller.",
+                    &self.name
+                );
+                return;
+            }
         };
 
         let url = match http_options.https_enabled {
@@ -221,10 +230,14 @@ impl Pool {
             let req = client.get(&url).build().expect("Failed to build request.");
 
             info!("Checking health at {} for {}", &url, &self.name);
+
+            // Check if the connection is successful
+            // Mark the app healthy based on the kind of successs criteria defined on the pool
             match client.execute(req).await {
-                Ok(r) => {
-                    match r.status() {
-                        StatusCode::OK => {
+                Ok(r) => match &http_options.receive_up {
+                    // Status code based healthy conditions
+                    HTTPReceive::StatusCodes(codes) => {
+                        if codes.contains(&r.status().as_u16()) {
                             info!("Host: {} marked healthy for {}", &host, &self.name);
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
@@ -237,8 +250,7 @@ impl Pool {
                             } else {
                                 continue;
                             }
-                        }
-                        StatusCode::SERVICE_UNAVAILABLE => {
+                        } else {
                             info!("Host: {} marked unhealthy for {}", &host, &self.name);
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
@@ -251,7 +263,48 @@ impl Pool {
                                 continue;
                             }
                         }
-                        _ => {
+                    }
+
+                    // String matching based healthy conditions
+                    HTTPReceive::String(match_string) => {
+                        let r_bytes = match r.bytes().await {
+                            Ok(b) => b,
+                            Err(e) => {
+                                info!("Host: {} marked unhealthy for {}", &host, &self.name);
+                                let mut members = cache.lock().unwrap();
+                                if let Some(items) = members.get_mut(&self.name) {
+                                    for member in items.iter_mut() {
+                                        if member.host == host {
+                                            member.healthy = false;
+                                        }
+                                    }
+                                } else {
+                                    continue;
+                                }
+                                info!("{e}");
+                                continue;
+                            }
+                        };
+
+                        // Check if the received body contains the match string
+                        if r_bytes
+                            .windows(match_string.as_bytes().len())
+                            .any(|window| window == match_string.as_bytes())
+                        {
+                            info!("Host: {} marked healthy for {}", &host, &self.name);
+                            let mut members = cache.lock().unwrap();
+                            if let Some(items) = members.get_mut(&self.name) {
+                                for member in items.iter_mut() {
+                                    if member.host == host {
+                                        member.healthy = true;
+                                        member.ip = resolved_addr;
+                                    }
+                                }
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            info!("Host: {} marked unhealthy for {}", &host, &self.name);
                             let mut members = cache.lock().unwrap();
                             if let Some(items) = members.get_mut(&self.name) {
                                 for member in items.iter_mut() {
@@ -263,11 +316,20 @@ impl Pool {
                                 continue;
                             }
                         }
-                    };
-                }
+                    }
+                },
                 Err(_) => {
-                    // let mut ips = cache.lock().unwrap();
-                    // ips.insert(self.name.clone(), Into::into(self.ip_addrs[1]));
+                    info!("Host: {} marked unhealthy for {}", &host, &self.name);
+                    let mut members = cache.lock().unwrap();
+                    if let Some(items) = members.get_mut(&self.name) {
+                        for member in items.iter_mut() {
+                            if member.host == host {
+                                member.healthy = false;
+                            }
+                        }
+                    } else {
+                        continue;
+                    }
                 }
             };
 
