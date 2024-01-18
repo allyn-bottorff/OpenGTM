@@ -43,6 +43,8 @@ struct Config {
     pools: Vec<healthcheck::Pool>,
 }
 
+type HealthTable = Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>>;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------------
@@ -53,8 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
-    let cache: Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let cache: HealthTable = Arc::new(Mutex::new(HashMap::new()));
 
     // TODO(alb): Separate into multiple IP info routes by type
     // e.g. "global availability", "round robin", "random"
@@ -170,10 +171,7 @@ async fn livez() -> (StatusCode, &'static str) {
 }
 
 /// Get the first healthy member of the requested pool
-async fn info(
-    q: Query<QueryParams>,
-    State(state): State<Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>>>,
-) -> (StatusCode, String) {
+async fn info(q: Query<QueryParams>, State(state): State<HealthTable>) -> (StatusCode, String) {
     let map = &state.lock().unwrap();
     if let Some(item) = map.get(&q.name) {
         let healthy_members: Vec<&healthcheck::Member> =
@@ -196,7 +194,7 @@ async fn info(
 /// necessary
 async fn handle_priority_order(
     q: Query<QueryParams>,
-    State(state): State<Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>>>,
+    State(state): State<HealthTable>,
 ) -> (StatusCode, String) {
     let state = &state.lock();
     let map = match state {
@@ -250,10 +248,7 @@ async fn handle_priority_order(
 
 /// Set the contents of the "localhost" entry of the host:ip map to be some
 /// arbitrary IP to prove that the state is changing
-async fn reset(
-    q: Query<QueryParams>,
-    State(state): State<Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>>>,
-) -> (StatusCode, String) {
+async fn reset(q: Query<QueryParams>, State(state): State<HealthTable>) -> (StatusCode, String) {
     state.lock().unwrap().insert(
         q.name.clone(),
         vec![healthcheck::Member {
@@ -267,9 +262,7 @@ async fn reset(
 }
 
 /// Dump the entire state table to a JSON-formatted response
-async fn dump_table(
-    State(state): State<Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>>>,
-) -> (StatusCode, String) {
+async fn dump_table(State(state): State<HealthTable>) -> (StatusCode, String) {
     let map = &state.lock().unwrap().clone();
 
     (StatusCode::OK, serde_json::to_string(map).unwrap())

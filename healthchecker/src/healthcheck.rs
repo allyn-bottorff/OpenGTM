@@ -17,10 +17,10 @@ use log::{info, warn};
 use rand::prelude::*;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
-use std::sync::{Arc, Mutex};
 use tokio::{net, time};
+
+use crate::HealthTable;
 
 #[derive(Clone, Deserialize)]
 pub enum PollType {
@@ -84,7 +84,7 @@ pub struct Pool {
 
 impl Pool {
     /// Long lived poller for TCP health checks.
-    pub async fn tcp_poller(self, host: String, cache: Arc<Mutex<HashMap<String, Vec<Member>>>>) {
+    pub async fn tcp_poller(self, host: String, cache: HealthTable) {
         // Set backoff to a random integer value between 0 and the interval. At the end of the loop,
         // sleep the difference between the backoff and the configured interval. Ater the sleep, set
         // the interval to 0 so that the sleep is now the same as the interval.
@@ -154,7 +154,7 @@ impl Pool {
     }
 
     /// Long lived poller for HTTP(s) health checks.
-    pub async fn http_poller(self, host: String, cache: Arc<Mutex<HashMap<String, Vec<Member>>>>) {
+    pub async fn http_poller(self, host: String, cache: HealthTable) {
         // Set backoff to a random integer value between 0 and the interval. At the end of the loop,
         // sleep the difference between the backoff and the configured interval. Ater the sleep, set
         // the interval to 0 so that the sleep is now the same as the interval.
