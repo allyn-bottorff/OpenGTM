@@ -43,7 +43,7 @@ struct Config {
     pools: Vec<healthcheck::Pool>,
 }
 
-type HealthTable = Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>>;
+type HealthTable = HashMap<String, Arc<Mutex<Vec<healthcheck::Member>>>>;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
-    let cache: HealthTable = Arc::new(Mutex::new(HashMap::new()));
+    let cache: HealthTable = HashMap::new();
 
     // TODO(alb): Separate into multiple IP info routes by type
     // e.g. "global availability", "round robin", "random"
