@@ -55,12 +55,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
-    let cache: HealthTable = HashMap::new();
+    let state_table: HealthTable = HashMap::new();
 
     // TODO(alb): Separate into multiple IP info routes by type
     // e.g. "global availability", "round robin", "random"
 
-    let t = Arc::clone(&cache);
     let app = Router::new()
         .route("/healthz", get(healthz))
         .route("/livez", get(livez))
@@ -69,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/randommember", get(info))
         .route("/reset", get(reset))
         .route("/dump", get(dump_table))
-        .with_state(t);
+        .with_state(&state_table);
 
     info!("Starting API");
 
@@ -93,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     for p in &conf.pools {
-        let t = Arc::clone(&cache);
+        let t = Arc::clone(&state_table);
         let mut items = t.lock().unwrap();
         let mut members: Vec<healthcheck::Member> = p
             .members
@@ -129,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for c in conf.pools {
         for member in &c.members {
-            let t = Arc::clone(&cache);
+            let t = Arc::clone(&state_table);
             let name = member.clone();
 
             match c.poll_type {
@@ -171,9 +170,10 @@ async fn livez() -> (StatusCode, &'static str) {
 }
 
 /// Get the first healthy member of the requested pool
-async fn info(q: Query<QueryParams>, State(state): State<HealthTable>) -> (StatusCode, String) {
-    let map = &state.lock().unwrap();
-    if let Some(item) = map.get(&q.name) {
+async fn info(q: Query<QueryParams>, State(state): State<&HealthTable>) -> (StatusCode, String) {
+    //let map = &state.lock().unwrap();
+    if let Some(item) = state.get(&q.name) {
+        let item = item.lock().unwrap();
         let healthy_members: Vec<&healthcheck::Member> =
             item.iter().filter(|m| m.healthy == true).collect();
 
@@ -194,35 +194,22 @@ async fn info(q: Query<QueryParams>, State(state): State<HealthTable>) -> (Statu
 /// necessary
 async fn handle_priority_order(
     q: Query<QueryParams>,
-    State(state): State<HealthTable>,
+    State(state): State<&HealthTable>,
 ) -> (StatusCode, String) {
-    let state = &state.lock();
-    let map = match state {
-        Ok(m) => m,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal Server Error".into(),
+    if let Some(members) = state.get(&q.name) {
+        let members = members.lock().unwrap();
+        let healthy_members: Vec<&healthcheck::Member> =
+            members.iter().filter(|m| m.healthy == true).collect();
+        if let Some(healthy_member) = healthy_members.first() {
+            (StatusCode::OK, healthy_member.ip.to_string())
+        } else {
+            (
+                StatusCode::NOT_FOUND,
+                "No healthy members found and no fallback IP".into(),
             )
         }
-    };
-
-    let members = match map.get(&q.name) {
-        Some(p) => {
-            let healthy_members: Vec<&healthcheck::Member> =
-                p.iter().filter(|m| m.healthy == true).collect();
-            healthy_members
-        }
-        None => return (StatusCode::NOT_FOUND, "Pool not found".into()),
-    };
-
-    if let Some(member) = members.first() {
-        (StatusCode::OK, member.ip.to_string())
     } else {
-        (
-            StatusCode::NOT_FOUND,
-            "No healthy members and no fallback IP".into(),
-        )
+        (StatusCode::NOT_FOUND, "Pool not found".into())
     }
 }
 
@@ -248,7 +235,7 @@ async fn handle_priority_order(
 
 /// Set the contents of the "localhost" entry of the host:ip map to be some
 /// arbitrary IP to prove that the state is changing
-async fn reset(q: Query<QueryParams>, State(state): State<HealthTable>) -> (StatusCode, String) {
+async fn reset(q: Query<QueryParams>, State(state): State<&HealthTable>) -> (StatusCode, String) {
     state.lock().unwrap().insert(
         q.name.clone(),
         vec![healthcheck::Member {
@@ -262,7 +249,7 @@ async fn reset(q: Query<QueryParams>, State(state): State<HealthTable>) -> (Stat
 }
 
 /// Dump the entire state table to a JSON-formatted response
-async fn dump_table(State(state): State<HealthTable>) -> (StatusCode, String) {
+async fn dump_table(State(state): State<&HealthTable>) -> (StatusCode, String) {
     let map = &state.lock().unwrap().clone();
 
     (StatusCode::OK, serde_json::to_string(map).unwrap())
