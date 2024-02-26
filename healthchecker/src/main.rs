@@ -235,24 +235,30 @@ async fn handle_priority_order(
 
 /// Set the contents of the "localhost" entry of the host:ip map to be some
 /// arbitrary IP to prove that the state is changing
-async fn reset(q: Query<QueryParams>, State(state): State<&HealthTable>) -> (StatusCode, String) {
-    state.lock().unwrap().insert(
+async fn reset(
+    q: Query<QueryParams>,
+    State(state): State<&mut HealthTable>,
+) -> (StatusCode, String) {
+    state.insert(
         q.name.clone(),
-        vec![healthcheck::Member {
+        Arc::new(Mutex::new(vec![healthcheck::Member {
             host: String::from("localhost"),
             ip: Into::into([1, 2, 3, 4]),
             healthy: true,
-        }],
+        }])),
     );
 
     (StatusCode::OK, String::from("OK"))
 }
 
-/// Dump the entire state table to a JSON-formatted response
+/// Dump the entire state table to a JSON-formatted response. This creates a clone of the table
+/// before serializing it and returning it to the client
 async fn dump_table(State(state): State<&HealthTable>) -> (StatusCode, String) {
-    let map = &state.lock().unwrap().clone();
-
-    (StatusCode::OK, serde_json::to_string(map).unwrap())
+    let mut map = HashMap::new();
+    for (key, val) in state {
+        map.insert(key, val.lock().unwrap().clone());
+    }
+    (StatusCode::OK, serde_json::to_string(&map).unwrap())
 }
 
 /// Read config file
