@@ -125,14 +125,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting health checkers");
 
-    for c in conf.pools {
-        for member in &c.members {
+    // Build out the table of health checks based on the loaded configuration.
+    // Starts a poller referencing the same shared cache for each member
+    for pool in conf.pools {
+        for member in &pool.members {
             let t = Arc::clone(&cache);
             let name = member.clone();
 
-            match c.poll_type {
-                healthcheck::PollType::HTTP => join_set.spawn(c.clone().http_poller(name, t)),
-                healthcheck::PollType::TCP => join_set.spawn(c.clone().tcp_poller(name, t)),
+            match pool.poll_type {
+                healthcheck::PollType::HTTP => join_set.spawn(pool.clone().http_poller(name, t)),
+                healthcheck::PollType::TCP => join_set.spawn(pool.clone().tcp_poller(name, t)),
             };
         }
     }
