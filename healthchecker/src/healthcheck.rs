@@ -16,16 +16,18 @@ use log::{error, info, warn};
 use rand::prelude::*;
 use reqwest;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
+use std::sync::{Arc, Mutex};
 use tokio::{net, time};
-
-use crate::HealthTable;
 
 #[derive(Clone, Deserialize)]
 pub enum PollType {
     HTTP,
     TCP,
 }
+
+pub type HealthTable = HashMap<String, Arc<Mutex<Vec<Member>>>>;
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]

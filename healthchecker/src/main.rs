@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
-    let state_table: HealthTable = HashMap::new();
+    let state_table: healthcheck::HealthTable = HashMap::new();
 
     // TODO(alb): Separate into multiple IP info routes by type
     // e.g. "global availability", "round robin", "random"
