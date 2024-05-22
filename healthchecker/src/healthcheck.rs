@@ -17,6 +17,7 @@ use rand::prelude::*;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Pending;
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use tokio::{net, time};
@@ -41,6 +42,7 @@ pub struct Member {
     pub host: String,
     pub ip: Ipv4Addr,
     pub healthy: bool,
+    pub cancel: bool,
 }
 impl Member {
     pub fn new(host: &String) -> Member {
@@ -59,13 +61,14 @@ impl Member {
 
         let resolved_v4 = match resolved_addr{
             IpAddr::V4(ip) => ip,
-            IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6  addresses while trying to resolve hostname: {}", &host),
+            IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}", &host),
         };
 
         Member {
             host: host.clone(),
             ip: resolved_v4,
             healthy: false,
+            cancel: false,
         }
     }
 }
@@ -245,10 +248,31 @@ impl Pool {
                 },
                 Err(_) => set_health(&cache, &self.name, &host, &resolved_addr, false),
             };
+            if pending_cancel(&cache, &self.name, &host) {
+                break;
+            }
 
             time::sleep(time::Duration::from_secs(self.interval.into())).await;
         }
     }
+}
+
+/// Check for poller cancellation
+fn pending_cancel(cache: &HealthTable, pool_name: &String, host: &String) -> bool {
+    let mut pools = cache.lock().unwrap();
+    if let Some(items) = pools.get_mut(pool_name) {
+        for member in items.iter_mut() {
+            if &member.host == host {
+                if member.cancel {
+                    member.cancel = false;
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Set the health of the node in the sharead cache
@@ -263,8 +287,8 @@ fn set_health(
         true => info!("Host: {} marked healthy for {}", &host, pool_name),
         false => info!("Host: {} marked unhealthy for {}", &host, pool_name),
     }
-    let mut members = cache.lock().unwrap();
-    if let Some(items) = members.get_mut(pool_name) {
+    let mut pools = cache.lock().unwrap();
+    if let Some(items) = pools.get_mut(pool_name) {
         for member in items.iter_mut() {
             if &member.host == host {
                 member.healthy = health;
