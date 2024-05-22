@@ -17,7 +17,7 @@ use rand::prelude::*;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::future::Pending;
+// use std::future::Pending;
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use tokio::{net, time};
@@ -43,6 +43,11 @@ pub struct Member {
     pub ip: Ipv4Addr,
     pub healthy: bool,
     pub cancel: bool,
+}
+impl PartialEq for Member {
+    fn eq(&self, rhs: &Member) -> bool {
+        self.host == rhs.host && self.ip == rhs.ip
+    }
 }
 impl Member {
     pub fn new(host: &String) -> Member {

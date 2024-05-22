@@ -22,10 +22,10 @@ use axum::{
 };
 
 // use reqwest;
-use env_logger;
+// use env_logger;
 use log::{error, info};
 use serde::Deserialize;
-use serde_json;
+// use serde_json;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
@@ -93,13 +93,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         for p in &conf.pools {
-            let t = Arc::clone(&cache);
-            let mut items = t.lock().unwrap();
-            let mut members: Vec<healthcheck::Member> = p
-                .members
-                .iter()
-                .map(|m| healthcheck::Member::new(m))
-                .collect();
+            let mut members: Vec<healthcheck::Member> =
+                p.members.iter().map(healthcheck::Member::new).collect();
             if let Some(fallback_ip) = p.fallback_ip {
                 members.push(healthcheck::Member {
                     host: "fallback".into(),
@@ -108,8 +103,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cancel: false,
                 });
             }
-
-            items.insert(p.name.clone(), members);
+            let t = Arc::clone(&cache);
+            let mut items = t.lock().unwrap();
+            if !items.contains_key(&p.name) {
+                items.insert(p.name.clone(), members);
+            } else if let Some(pool) = items.get_mut(&p.name) {
+                if *pool != members {
+                    *pool = members;
+                }
+            }
         }
 
         // Run the "main" loop which calls other apis and updates the cache
@@ -143,15 +145,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // while let Some(_res) = join_set.join_next().await {}
-
-        match join_set.join_next().await {
-            Some(res) => match res {
+        if let Some(res) = join_set.join_next().await {
+            match res {
                 Ok(_) => {}
                 Err(_) => {
                     break;
                 }
-            },
-            None => {}
+            }
         }
 
         info!("Restarting health checkers");
@@ -194,7 +194,7 @@ async fn info(
     let map = &state.lock().unwrap();
     if let Some(item) = map.get(&q.name) {
         let healthy_members: Vec<&healthcheck::Member> =
-            item.iter().filter(|m| m.healthy == true).collect();
+            item.iter().filter(|m| m.healthy).collect();
 
         if let Some(member) = healthy_members.first() {
             (StatusCode::OK, member.ip.to_string())
@@ -229,7 +229,7 @@ async fn handle_priority_order(
     let members = match map.get(&q.name) {
         Some(p) => {
             let healthy_members: Vec<&healthcheck::Member> =
-                p.iter().filter(|m| m.healthy == true).collect();
+                p.iter().filter(|m| m.healthy).collect();
             healthy_members
         }
         None => return (StatusCode::NOT_FOUND, "Pool not found".into()),
