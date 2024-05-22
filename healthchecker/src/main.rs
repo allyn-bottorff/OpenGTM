@@ -22,10 +22,10 @@ use axum::{
 };
 
 // use reqwest;
-use env_logger;
+// use env_logger;
 use log::{error, info};
 use serde::Deserialize;
-use serde_json;
+// use serde_json;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
@@ -43,8 +43,6 @@ struct Config {
     pools: Vec<healthcheck::Pool>,
 }
 
-type HealthTable = Arc<Mutex<HashMap<String, Vec<healthcheck::Member>>>>;
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------------
@@ -55,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
-    let cache: HealthTable = Arc::new(Mutex::new(HashMap::new()));
+    let cache: healthcheck::HealthTable = Arc::new(Mutex::new(HashMap::new()));
 
     // TODO(alb): Separate into multiple IP info routes by type
     // e.g. "global availability", "round robin", "random"
@@ -69,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/randommember", get(info))
         .route("/reset", get(reset))
         .route("/dump", get(dump_table))
+        .route("/reload", get(reload))
         .with_state(t);
 
     info!("Starting API");
@@ -83,63 +82,80 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------------
     // HEALTH CHECKER SECTION
     // -----------------------------------------------------------------------
-
-    let conf = match read_config(String::from("./conf.json")) {
-        Ok(c) => c,
-        Err(e) => {
-            error!("Failed to parse config file");
-            panic!("{e}");
-        }
-    };
-
-    for p in &conf.pools {
-        let t = Arc::clone(&cache);
-        let mut items = t.lock().unwrap();
-        let mut members: Vec<healthcheck::Member> = p
-            .members
-            .iter()
-            .map(|m| healthcheck::Member::new(m))
-            .collect();
-        if let Some(fallback_ip) = p.fallback_ip {
-            members.push(healthcheck::Member {
-                host: "fallback".into(),
-                ip: fallback_ip,
-                healthy: true,
-            });
-        }
-
-        items.insert(p.name.clone(), members);
-    }
-
-    // Run the "main" loop which calls other apis and updates the cache
-    //
-    // TODO: Reload config on some interrupt (like SIGHUP)
-    //
-    // Order of operations:
-    // 1. Check list of mananged servers.
-    // 2. Spawn a long-lived task for each checked server.
-    // 3. Let each task loop over check interval.
-
-    // Make an HTTP call to the local pingpong server. Return an error up to the tokio runtime
-    // if something goes wrong.
-
-    let mut join_set = JoinSet::new();
-
     info!("Starting health checkers");
+    loop {
+        let conf = match read_config(String::from("./conf.json")) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Failed to parse config file");
+                panic!("{e}");
+            }
+        };
 
-    for c in conf.pools {
-        for member in &c.members {
+        for p in &conf.pools {
+            let mut members: Vec<healthcheck::Member> =
+                p.members.iter().map(healthcheck::Member::new).collect();
+            if let Some(fallback_ip) = p.fallback_ip {
+                members.push(healthcheck::Member {
+                    host: "fallback".into(),
+                    ip: fallback_ip,
+                    healthy: true,
+                    cancel: false,
+                });
+            }
             let t = Arc::clone(&cache);
-            let name = member.clone();
-
-            match c.poll_type {
-                healthcheck::PollType::HTTP => join_set.spawn(c.clone().http_poller(name, t)),
-                healthcheck::PollType::TCP => join_set.spawn(c.clone().tcp_poller(name, t)),
-            };
+            let mut items = t.lock().unwrap();
+            if !items.contains_key(&p.name) {
+                items.insert(p.name.clone(), members);
+            } else if let Some(pool) = items.get_mut(&p.name) {
+                if *pool != members {
+                    *pool = members;
+                }
+            }
         }
-    }
 
-    while let Some(_res) = join_set.join_next().await {}
+        // Run the "main" loop which calls other apis and updates the cache
+        //
+        // TODO: Reload config on some interrupt (like SIGHUP)
+        //
+        // Order of operations:
+        // 1. Check list of mananged servers.
+        // 2. Spawn a long-lived task for each checked server.
+        // 3. Let each task loop over check interval.
+
+        // Make an HTTP call to the local pingpong server. Return an error up to the tokio runtime
+        // if something goes wrong.
+
+        let mut join_set = JoinSet::new();
+
+        // Build out the table of health checks based on the loaded configuration.
+        // Starts a poller referencing the same shared cache for each member
+        for pool in conf.pools {
+            for member in &pool.members {
+                let t = Arc::clone(&cache);
+                let name = member.clone();
+
+                match pool.poll_type {
+                    healthcheck::PollType::HTTP => {
+                        join_set.spawn(pool.clone().http_poller(name, t))
+                    }
+                    healthcheck::PollType::TCP => join_set.spawn(pool.clone().tcp_poller(name, t)),
+                };
+            }
+        }
+
+        // while let Some(_res) = join_set.join_next().await {}
+        if let Some(res) = join_set.join_next().await {
+            match res {
+                Ok(_) => {}
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+
+        info!("Restarting health checkers");
+    }
     Ok(())
 
     //     let resp = reqwest::get("http://127.0.0.1:9090/ping")
@@ -171,11 +187,14 @@ async fn livez() -> (StatusCode, &'static str) {
 }
 
 /// Get the first healthy member of the requested pool
-async fn info(q: Query<QueryParams>, State(state): State<HealthTable>) -> (StatusCode, String) {
+async fn info(
+    q: Query<QueryParams>,
+    State(state): State<healthcheck::HealthTable>,
+) -> (StatusCode, String) {
     let map = &state.lock().unwrap();
     if let Some(item) = map.get(&q.name) {
         let healthy_members: Vec<&healthcheck::Member> =
-            item.iter().filter(|m| m.healthy == true).collect();
+            item.iter().filter(|m| m.healthy).collect();
 
         if let Some(member) = healthy_members.first() {
             (StatusCode::OK, member.ip.to_string())
@@ -194,7 +213,7 @@ async fn info(q: Query<QueryParams>, State(state): State<HealthTable>) -> (Statu
 /// necessary
 async fn handle_priority_order(
     q: Query<QueryParams>,
-    State(state): State<HealthTable>,
+    State(state): State<healthcheck::HealthTable>,
 ) -> (StatusCode, String) {
     let state = &state.lock();
     let map = match state {
@@ -210,7 +229,7 @@ async fn handle_priority_order(
     let members = match map.get(&q.name) {
         Some(p) => {
             let healthy_members: Vec<&healthcheck::Member> =
-                p.iter().filter(|m| m.healthy == true).collect();
+                p.iter().filter(|m| m.healthy).collect();
             healthy_members
         }
         None => return (StatusCode::NOT_FOUND, "Pool not found".into()),
@@ -248,13 +267,17 @@ async fn handle_priority_order(
 
 /// Set the contents of the "localhost" entry of the host:ip map to be some
 /// arbitrary IP to prove that the state is changing
-async fn reset(q: Query<QueryParams>, State(state): State<HealthTable>) -> (StatusCode, String) {
+async fn reset(
+    q: Query<QueryParams>,
+    State(state): State<healthcheck::HealthTable>,
+) -> (StatusCode, String) {
     state.lock().unwrap().insert(
         q.name.clone(),
         vec![healthcheck::Member {
             host: String::from("localhost"),
             ip: Into::into([1, 2, 3, 4]),
             healthy: true,
+            cancel: false,
         }],
     );
 
@@ -262,10 +285,22 @@ async fn reset(q: Query<QueryParams>, State(state): State<HealthTable>) -> (Stat
 }
 
 /// Dump the entire state table to a JSON-formatted response
-async fn dump_table(State(state): State<HealthTable>) -> (StatusCode, String) {
+async fn dump_table(State(state): State<healthcheck::HealthTable>) -> (StatusCode, String) {
     let map = &state.lock().unwrap().clone();
 
     (StatusCode::OK, serde_json::to_string(map).unwrap())
+}
+
+/// Reload the config and restart the pollers
+async fn reload(State(state): State<healthcheck::HealthTable>) -> (StatusCode, String) {
+    let mut pools = state.lock().unwrap();
+    for (_pool, members) in pools.iter_mut() {
+        for member in members {
+            member.cancel = true;
+        }
+    }
+
+    (StatusCode::OK, String::from("Config reloaded"))
 }
 
 /// Read config file
