@@ -40,7 +40,7 @@ struct QueryParams {
 
 #[derive(Deserialize)]
 struct Config {
-    pools: Vec<healthcheck::Pool>,
+    pools: Vec<healthcheck::ConfigPool>,
 }
 
 #[tokio::main]

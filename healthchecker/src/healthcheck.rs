@@ -107,15 +107,30 @@ pub struct HTTPOptions {
 }
 
 #[derive(Clone, Deserialize)]
+pub struct ConfigPool {
+    pub name: String,
+    pub port: u16,
+    pub interval: u16,
+    pub members: Vec<String>,
+    pub poll_type: PollType,
+    pub http_options: Option<HTTPOptions>,
+    pub fallback_ip: Option<Ipv4Addr>,
+}
+
+#[derive(Clone)]
 ///Configuration relevant to a pool to be checked.
 pub struct Pool {
     pub name: String, //FQDN label for load balanced app
     pub port: u16,
     pub interval: u16,
-    pub members: Vec<String>, //Pool member FQDNs
+    pub members: Vec<Member>, //Pool member FQDNs
     pub poll_type: PollType,
     pub http_options: Option<HTTPOptions>,
     pub fallback_ip: Option<Ipv4Addr>,
+}
+
+impl From<ConfigPool> for Pool {
+    fn from(value: ConfigPool) -> Self {}
 }
 
 impl Pool {
