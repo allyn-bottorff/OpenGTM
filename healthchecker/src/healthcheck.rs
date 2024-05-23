@@ -28,6 +28,13 @@ pub enum PollType {
     TCP,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HostAddr {
+    Hostname(String),
+    Ip(Ipv4Addr),
+}
+
 pub type HealthTable = Arc<Mutex<HashMap<String, Vec<Member>>>>;
 
 #[derive(Clone, Deserialize)]
@@ -38,25 +45,35 @@ enum HTTPReceive {
 }
 
 #[derive(Clone, Serialize)]
-pub struct Member {
-    pub host: String,
-    pub ip: Ipv4Addr,
+pub struct MemberDynamic {
+    pub resolved_ip: Ipv4Addr,
     pub healthy: bool,
     pub cancel: bool,
 }
+
+#[derive(Clone, Serialize)]
+pub struct Member {
+    pub host: HostAddr,
+    pub metadata: Arc<Mutex<MemberDynamic>>,
+}
+
 impl PartialEq for Member {
     fn eq(&self, rhs: &Member) -> bool {
-        self.host == rhs.host && self.ip == rhs.ip
+        self.host == rhs.host
     }
 }
 impl Member {
-    pub fn new(host: &String) -> Member {
-        let host_socket_string = format!("{}:{}", host, 443);
+    pub fn new(host: HostAddr) -> Member {
+        // let host_socket_string = format!("{}:{}", host, 443);
 
         // Get the first ipv4 address and ignore the rest
         // Explode if after filtering for an ipv4 addr, an ipv6 addr is parsed.
         // TODO(alb): this could probably be refactored to make it easier to read
-        let resolved_addr: IpAddr = match host_socket_string.to_socket_addrs() {
+        let socket = match host {
+            HostAddr::Hostname(host) => format!("{}:{}", host, 443),
+            HostAddr::Ip(ip) => format!("{}:{}", ip.to_string(), 443),
+        };
+        let resolved_addr: IpAddr = match socket.to_socket_addrs() {
             Ok(mut socket) => match socket.find(|ip| ip.is_ipv4()) {
                 Some(socket_addr) => socket_addr.ip(),
                 None => [127, 0, 0, 1].into(),
@@ -66,14 +83,16 @@ impl Member {
 
         let resolved_v4 = match resolved_addr{
             IpAddr::V4(ip) => ip,
-            IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}", &host),
+            IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {:?}", &host),
         };
 
         Member {
             host: host.clone(),
-            ip: resolved_v4,
-            healthy: false,
-            cancel: false,
+            metadata: Arc::new(Mutex::new(MemberDynamic {
+                resolved_ip: resolved_v4,
+                healthy: true,
+                cancel: false,
+            })),
         }
     }
 }
