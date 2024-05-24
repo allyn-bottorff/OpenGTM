@@ -72,7 +72,7 @@ impl Member {
         Member {
             host: host.clone(),
             ip: resolved_v4,
-            healthy: false,
+            healthy: true,
             cancel: false,
         }
     }
