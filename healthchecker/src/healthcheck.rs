@@ -59,9 +59,9 @@ impl Member {
         let resolved_addr: IpAddr = match host_socket_string.to_socket_addrs() {
             Ok(mut socket) => match socket.find(|ip| ip.is_ipv4()) {
                 Some(socket_addr) => socket_addr.ip(),
-                None => [127, 0, 0, 1].into(),
+                None => [0, 0, 0, 0].into(),
             },
-            Err(_) => [127, 0, 0, 1].into(),
+            Err(_) => [0, 0, 0, 0].into(),
         };
 
         let resolved_v4 = match resolved_addr{

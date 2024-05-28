@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     env_logger::init();
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
 
     let cache: healthcheck::HealthTable = Arc::new(Mutex::new(HashMap::new()));
 
