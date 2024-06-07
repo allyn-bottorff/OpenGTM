@@ -16,7 +16,11 @@ package gtm
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net"
+	"net/http"
 
 	"github.com/coredns/coredns/plugin"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
@@ -47,28 +51,45 @@ type ResponseHandler struct {
 func (r *ResponseHandler) WriteMsg(res *dns.Msg) error {
 	question := res.Question[0].String()
 
-	clog.Info("example. Question: %s", question)
-	clog.Info("responding with garbage")
+	clog.Info("Question: %s", question)
 
-	state := request.Request{
-		W:   r.ResponseWriter,
-		Req: res,
+	url := fmt.Sprintf("http://localhost:8080/info?name=%s", question)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		clog.Info("error calling %s", url)
+		return errors.New("error calling health checker")
 	}
 
-	ip := "8.8.8.8"
-	var rr dns.RR
+	if resp.StatusCode == http.StatusOK {
+		respBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return errors.New("Unable to read response from health checker API")
+		}
+		ip := string(respBytes)
+		state := request.Request{
+			W:   r.ResponseWriter,
+			Req: res,
+		}
 
-	rr = new(dns.A)
-	rr.(*dns.A).Hdr = dns.RR_Header{
-		Name:   state.QName(),
-		Rrtype: dns.TypeA,
-		Class:  state.QClass(),
+		var rr dns.RR
+
+		rr = new(dns.A)
+		rr.(*dns.A).Hdr = dns.RR_Header{
+			Name:   state.QName(),
+			Rrtype: dns.TypeA,
+			Class:  state.QClass(),
+		}
+		rr.(*dns.A).A = net.ParseIP(ip)
+
+		res.Answer = []dns.RR{rr}
+
+		return r.ResponseWriter.WriteMsg(res)
+
+	} else {
+		return errors.New("Non 200 response from health checker API")
 	}
-	rr.(*dns.A).A = net.ParseIP(ip)
 
-	res.Answer = []dns.RR{rr}
-
-	return r.ResponseWriter.WriteMsg(res)
 }
 
 func NewResponseHandler(w dns.ResponseWriter) *ResponseHandler {
