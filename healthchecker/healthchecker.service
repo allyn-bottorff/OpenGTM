@@ -1,0 +1,10 @@
+[Unit]
+Description=Remote service health checker
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/healthchecker
+Type=Simple
+
+[Install]
+WantedBy=multi-user.target
