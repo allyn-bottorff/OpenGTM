@@ -99,166 +99,162 @@ pub struct Pool {
     pub fallback_ip: Option<Ipv4Addr>,
 }
 
-impl Pool {
-    /// Long lived poller for TCP health checks.
-    pub async fn tcp_poller(self, host: String, cache: HealthTable) {
-        // Set backoff to a random integer value between 0 and the interval. At the end of the loop,
-        // sleep the difference between the backoff and the configured interval. Ater the sleep, set
-        // the interval to 0 so that the sleep is now the same as the interval.
-        // This should keep the polling fairly even across the typical polling periods and prevent
-        // blasting traffic out all at once on startup and then every 30 seconds after.
+/// Long lived poller for TCP health checks.
+pub async fn tcp_poller(pool: &Pool, host: String, cache: HealthTable) {
+    // Set backoff to a random integer value between 0 and the interval. At the end of the loop,
+    // sleep the difference between the backoff and the configured interval. Ater the sleep, set
+    // the interval to 0 so that the sleep is now the same as the interval.
+    // This should keep the polling fairly even across the typical polling periods and prevent
+    // blasting traffic out all at once on startup and then every 30 seconds after.
 
-        info!("Starting poller for {}: {}", &self.name, &host);
+    info!("Starting poller for {}: {}", pool.name, &host);
 
-        let backoff = rand::thread_rng().gen_range(0..=self.interval);
-        let host_socket = format!("{}:{}", host, &self.port);
+    let backoff = rand::thread_rng().gen_range(0..=pool.interval);
+    let host_socket = format!("{}:{}", host, pool.port);
 
-        info!(
-            "Waiting {} seconds before starting poll for {}: {}",
-            backoff, &self.name, &host
-        );
-        time::sleep(time::Duration::from_secs(backoff.into())).await;
+    info!(
+        "Waiting {} seconds before starting poll for {}: {}",
+        backoff, pool.name, &host
+    );
+    time::sleep(time::Duration::from_secs(backoff.into())).await;
 
-        loop {
-            // Resolve the hostname once per iteration
-            // This gets the first ipv4 addr and panics if it finds an ipv6
-            let mut socket = match host_socket.to_socket_addrs() {
-                Ok(s) => s,
-                Err(_) => {
-                    warn!("DNS lookup failed for {}", &host);
-                    time::sleep(time::Duration::from_secs(self.interval.into())).await;
-                    continue;
-                }
-            };
-            let resolved_addr: Ipv4Addr = match socket
+    loop {
+        // Resolve the hostname once per iteration
+        // This gets the first ipv4 addr and panics if it finds an ipv6
+        let mut socket = match host_socket.to_socket_addrs() {
+            Ok(s) => s,
+            Err(_) => {
+                warn!("DNS lookup failed for {}", &host);
+                time::sleep(time::Duration::from_secs(pool.interval.into())).await;
+                continue;
+            }
+        };
+        let resolved_addr: Ipv4Addr = match socket
                 .find(|ip| ip.is_ipv4()).expect("No IpV4 addresses found")
                 .ip() {
                     IpAddr::V4(ip) =>  ip,
                     IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}", &host) //This should be impossible.
                 };
-            let conn = net::TcpStream::connect(&host_socket).await;
-            match conn {
-                Ok(_) => set_health(&cache, &self.name, &host, &resolved_addr, true),
-                Err(_) => set_health(&cache, &self.name, &host, &resolved_addr, false),
-            }
-            time::sleep(time::Duration::from_secs(self.interval.into())).await;
+        let conn = net::TcpStream::connect(&host_socket).await;
+        match conn {
+            Ok(_) => set_health(&cache, &pool.name, &host, &resolved_addr, true),
+            Err(_) => set_health(&cache, &pool.name, &host, &resolved_addr, false),
         }
+        time::sleep(time::Duration::from_secs(pool.interval.into())).await;
     }
+}
 
-    /// Long lived poller for HTTP(s) health checks.
-    pub async fn http_poller(self, host: String, cache: HealthTable) {
-        // Set backoff to a random integer value between 0 and the interval. At the end of the loop,
-        // sleep the difference between the backoff and the configured interval. Ater the sleep, set
-        // the interval to 0 so that the sleep is now the same as the interval.
-        // This should keep the polling fairly even across the typical polling periods and prevent
-        // blasting traffic out all at once on startup and then every 30 seconds after.
-        //
-        // TODO(alb): Health checks which require authentication
+/// Long lived poller for HTTP(s) health checks.
+pub async fn http_poller(pool: &Pool, host: String, cache: HealthTable) {
+    // Set backoff to a random integer value between 0 and the interval. At the end of the loop,
+    // sleep the difference between the backoff and the configured interval. Ater the sleep, set
+    // the interval to 0 so that the sleep is now the same as the interval.
+    // This should keep the polling fairly even across the typical polling periods and prevent
+    // blasting traffic out all at once on startup and then every 30 seconds after.
+    //
+    // TODO(alb): Health checks which require authentication
 
-        info!("Starting poller for {}: {}", &self.name, &host);
+    info!("Starting poller for {}: {}", pool.name, &host);
 
-        let http_options = match &self.http_options {
-            Some(o) => o,
-            None => {
-                error!(
-                    "No http options found for http poller on pool {}. Exiting poller.",
-                    &self.name
-                );
-                return;
+    let http_options = match pool.http_options {
+        Some(o) => o,
+        None => {
+            error!(
+                "No http options found for http poller on pool {}. Exiting poller.",
+                pool.name
+            );
+            return;
+        }
+    };
+
+    let url = match http_options.https_enabled {
+        true => format!("https://{}:{}{}", host, pool.port, http_options.send),
+        false => format!("http://{}:{}{}", host, pool.port, http_options.send),
+    };
+
+    let host_socket = format!("{}:{}", host, pool.port);
+
+    let backoff = rand::thread_rng().gen_range(0..=pool.interval);
+
+    info!(
+        "Waiting {} seconds before starting poll for {}: {}",
+        backoff, pool.name, &host
+    );
+
+    time::sleep(time::Duration::from_secs(backoff.into())).await;
+
+    loop {
+        let client = match &http_options.https_enabled {
+            true => reqwest::Client::builder()
+                .danger_accept_invalid_certs(!http_options.https_require_validity.unwrap_or(false))
+                .build()
+                .unwrap(),
+            false => reqwest::Client::builder().build().unwrap(),
+        };
+
+        // Resolve the hostname once per iteration
+        // This gets the first ipv4 addr and panics if it finds an ipv6
+        let mut socket = match host_socket.to_socket_addrs() {
+            Ok(s) => s,
+            Err(_) => {
+                warn!("DNS lookup failed for {}", &host);
+                time::sleep(time::Duration::from_secs(pool.interval.into())).await;
+                continue;
             }
         };
-
-        let url = match http_options.https_enabled {
-            true => format!("https://{}:{}{}", host, self.port, http_options.send),
-            false => format!("http://{}:{}{}", host, self.port, http_options.send),
-        };
-
-        let host_socket = format!("{}:{}", host, self.port);
-
-        let backoff = rand::thread_rng().gen_range(0..=self.interval);
-
-        info!(
-            "Waiting {} seconds before starting poll for {}: {}",
-            backoff, &self.name, &host
-        );
-
-        time::sleep(time::Duration::from_secs(backoff.into())).await;
-
-        loop {
-            let client = match &http_options.https_enabled {
-                true => reqwest::Client::builder()
-                    .danger_accept_invalid_certs(
-                        !http_options.https_require_validity.unwrap_or(false),
-                    )
-                    .build()
-                    .unwrap(),
-                false => reqwest::Client::builder().build().unwrap(),
-            };
-
-            // Resolve the hostname once per iteration
-            // This gets the first ipv4 addr and panics if it finds an ipv6
-            let mut socket = match host_socket.to_socket_addrs() {
-                Ok(s) => s,
-                Err(_) => {
-                    warn!("DNS lookup failed for {}", &host);
-                    time::sleep(time::Duration::from_secs(self.interval.into())).await;
-                    continue;
-                }
-            };
-            let resolved_addr: Ipv4Addr = match socket
+        let resolved_addr: Ipv4Addr = match socket
                 .find(|ip| ip.is_ipv4()).expect("No IpV4 addresses found")
                 .ip() {
                     IpAddr::V4(ip) =>  ip,
                     IpAddr::V6(_) => panic!("Found IPv6 after filtering out IPv6 addresses while trying to resolve hostname: {}", &host) //This should be impossible.
                 };
 
-            let req = client.get(&url).build().expect("Failed to build request.");
+        let req = client.get(&url).build().expect("Failed to build request.");
 
-            info!("Checking health at {} for {}", &url, &self.name);
+        info!("Checking health at {} for {}", &url, pool.name);
 
-            // Check if the connection is successful
-            // Mark the app healthy based on the kind of successs criteria defined on the pool
-            match client.execute(req).await {
-                Ok(r) => match &http_options.receive_up {
-                    // Status code based healthy conditions
-                    HTTPReceive::StatusCodes(codes) => {
-                        if codes.contains(&r.status().as_u16()) {
-                            set_health(&cache, &self.name, &host, &resolved_addr, true);
-                        } else {
-                            set_health(&cache, &self.name, &host, &resolved_addr, false);
-                        }
+        // Check if the connection is successful
+        // Mark the app healthy based on the kind of successs criteria defined on the pool
+        match client.execute(req).await {
+            Ok(r) => match &http_options.receive_up {
+                // Status code based healthy conditions
+                HTTPReceive::StatusCodes(codes) => {
+                    if codes.contains(&r.status().as_u16()) {
+                        set_health(&cache, &pool.name, &host, &resolved_addr, true);
+                    } else {
+                        set_health(&cache, &pool.name, &host, &resolved_addr, false);
                     }
+                }
 
-                    // String matching based healthy conditions
-                    HTTPReceive::String(match_string) => {
-                        let r_bytes = match r.bytes().await {
-                            Ok(b) => b,
-                            Err(e) => {
-                                set_health(&cache, &self.name, &host, &resolved_addr, false);
-                                info!("{e}");
-                                continue;
-                            }
-                        };
-
-                        // Check if the received body contains the match string
-                        if r_bytes
-                            .windows(match_string.as_bytes().len())
-                            .any(|window| window == match_string.as_bytes())
-                        {
-                            set_health(&cache, &self.name, &host, &resolved_addr, true);
-                        } else {
-                            set_health(&cache, &self.name, &host, &resolved_addr, false);
+                // String matching based healthy conditions
+                HTTPReceive::String(match_string) => {
+                    let r_bytes = match r.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            set_health(&cache, &pool.name, &host, &resolved_addr, false);
+                            info!("{e}");
+                            continue;
                         }
-                    }
-                },
-                Err(_) => set_health(&cache, &self.name, &host, &resolved_addr, false),
-            };
-            if pending_cancel(&cache, &self.name, &host) {
-                break;
-            }
+                    };
 
-            time::sleep(time::Duration::from_secs(self.interval.into())).await;
+                    // Check if the received body contains the match string
+                    if r_bytes
+                        .windows(match_string.as_bytes().len())
+                        .any(|window| window == match_string.as_bytes())
+                    {
+                        set_health(&cache, &pool.name, &host, &resolved_addr, true);
+                    } else {
+                        set_health(&cache, &pool.name, &host, &resolved_addr, false);
+                    }
+                }
+            },
+            Err(_) => set_health(&cache, &pool.name, &host, &resolved_addr, false),
+        };
+        if pending_cancel(&cache, &pool.name, &host) {
+            break;
         }
+
+        time::sleep(time::Duration::from_secs(self.interval.into())).await;
     }
 }
 
