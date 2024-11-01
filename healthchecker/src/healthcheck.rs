@@ -254,7 +254,7 @@ pub async fn http_poller(pool: &Pool, host: String, cache: HealthTable) {
             break;
         }
 
-        time::sleep(time::Duration::from_secs(self.interval.into())).await;
+        time::sleep(time::Duration::from_secs(pool.interval.into())).await;
     }
 }
 
