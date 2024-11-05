@@ -136,11 +136,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let name = member.clone();
 
                 match pool.poll_type {
+                    // These clones aren't ideal, but it only happens during poller creation.
+                    // There ought to be a way to tell the compiler that the config struct can live
+                    // at least as long as the join_set
                     healthcheck::PollType::HTTP => {
-                        join_set.spawn(healthcheck::http_poller(&pool, name, t))
+                        join_set.spawn(healthcheck::http_poller(pool.clone(), name, t))
                     }
                     healthcheck::PollType::TCP => {
-                        join_set.spawn(healthcheck::tcp_poller(&pool, name, t))
+                        join_set.spawn(healthcheck::tcp_poller(pool.clone(), name, t))
                     }
                 };
             }
