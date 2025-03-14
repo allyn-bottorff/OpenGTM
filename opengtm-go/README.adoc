@@ -1,0 +1,12 @@
+= OpenGTM
+
+This is a DNS Load Balancing service. It includes a stand-along health checking
+service with an HTTP API and a CoreDNS plugin which can call the HTTP API to
+query the status of services.
+
+The health check service currently supports HTTP and TCP based health checks.
+
+
+== Organization
+
+* The main API lives in `src/cmd/opengtm/main.go`
