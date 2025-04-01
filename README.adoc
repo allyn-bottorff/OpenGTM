@@ -3,6 +3,8 @@
 Global Traffic Managment (GTM) service which can provide health check aware
 responses to DNS queries. 
 
+The Go version of this project is now located here: https://github.com/allyn-bottorff/OpenGTM-Go
+
 == Structure
 
 * Rust health checking service
