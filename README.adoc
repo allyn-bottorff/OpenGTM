@@ -14,8 +14,29 @@ The Go version of this project is now located here: https://github.com/allyn-bot
 ** Makes API calls to the health checking service to determine the correct
 answer to a DNS query
 
+== Running
+
+The project expects a config file `conf.json` in the same directory of the
+binary. In the future, this path will be configurable.
+
+[source, shell]
+----
+cargo run
+----
+Health Checker currently uses https://docs.rs/env_logger/latest/env_logger/[env_logger]
+for setting the log level. E.g.
+
+[source, shell]
+----
+RUST_LOG=info cargo run
+----
+
+
 == Health Checker Configuration
 
+This sample config can be used to run the project.
+
+`./conf.json`
 [source, json]
 ----
 {
@@ -77,16 +98,3 @@ answer to a DNS query
 }
 ----
 
-== Running
-
-[source, shell]
-----
-cargo run
-----
-Health Checker currently uses https://docs.rs/env_logger/latest/env_logger/[env_logger]
-for setting the log level. E.g.
-
-[source, shell]
-----
-RUST_LOG=info cargo run
-----

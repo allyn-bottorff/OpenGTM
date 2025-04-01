@@ -29,6 +29,7 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
+use std::process;
 use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, error::Error};
 use tokio::task::JoinSet;
@@ -87,8 +88,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let conf = match read_config(String::from("./conf.json")) {
             Ok(c) => c,
             Err(e) => {
-                error!("Failed to parse config file");
-                panic!("{e}");
+                log::error!("Failed to parse config file: {e}");
+                process::exit(1);
             }
         };
 
