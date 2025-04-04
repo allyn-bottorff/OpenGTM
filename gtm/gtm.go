@@ -18,6 +18,8 @@ import (
 	"context"
 	"net"
 
+	"github.com/coredns/caddy"
+	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/request"
@@ -25,8 +27,13 @@ import (
 	"github.com/miekg/dns"
 )
 
+var log = clog.NewWithPlugin("gtm")
+
 type Gtm struct {
 	Next plugin.Handler
+}
+type ResponseHandler struct {
+	dns.ResponseWriter
 }
 
 func (g *Gtm) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
@@ -40,15 +47,11 @@ func (g *Gtm) Name() string {
 	return "gtm"
 }
 
-type ResponseHandler struct {
-	dns.ResponseWriter
-}
-
 func (r *ResponseHandler) WriteMsg(res *dns.Msg) error {
 	question := res.Question[0].String()
 
-	clog.Info("example. Question: %s", question)
-	clog.Info("responding with garbage")
+	log.Infof("Question: %s", question)
+	log.Info("responding with garbage")
 
 	state := request.Request{
 		W:   r.ResponseWriter,
@@ -73,4 +76,25 @@ func (r *ResponseHandler) WriteMsg(res *dns.Msg) error {
 
 func NewResponseHandler(w dns.ResponseWriter) *ResponseHandler {
 	return &ResponseHandler{ResponseWriter: w}
+}
+
+func (g Gtm) Ready() bool {
+	return true
+}
+
+func setup(c *caddy.Controller) error {
+	c.Next()
+	if c.NextArg() {
+		return plugin.Error("gtm", c.ArgErr())
+	}
+
+	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
+		return &Gtm{Next: next}
+	})
+
+	return nil
+}
+
+func init() {
+	plugin.Register("gtm", setup)
 }
