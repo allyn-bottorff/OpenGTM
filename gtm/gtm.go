@@ -16,46 +16,47 @@ package gtm
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"strings"
 
+	"github.com/coredns/caddy"
+	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
-	"github.com/coredns/coredns/request"
 
 	"github.com/miekg/dns"
+
+	"github.com/coredns/coredns/request"
 )
+
+var log = clog.NewWithPlugin("gtm")
 
 type Gtm struct {
 	Next plugin.Handler
 }
-
-func (g *Gtm) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
-
-	pw := NewResponseHandler(w)
-
-	return plugin.NextOrFailure(g.Name(), g.Next, ctx, pw, r)
-}
-
-func (g *Gtm) Name() string {
-	return "gtm"
-}
-
 type ResponseHandler struct {
 	dns.ResponseWriter
 }
 
-func (r *ResponseHandler) WriteMsg(res *dns.Msg) error {
-	question := res.Question[0].String()
+func (g Gtm) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
 
-	clog.Info("example. Question: %s", question)
-	clog.Info("responding with garbage")
+	question := r.Question[0].Name
+
+	// Remove the technically correct (but not usually seen) trailing dot which
+	// reprents that the domain name is fully qualified to the root zone.
+	// The healthchecker API doesn't expect there to be trailing "."
+	question = strings.TrimSuffix(question, ".")
+
+	log.Infof("Question: %s", question)
 
 	state := request.Request{
-		W:   r.ResponseWriter,
-		Req: res,
+		W:   w,
+		Req: r,
 	}
 
-	ip := "8.8.8.8"
 	var rr dns.RR
 
 	rr = new(dns.A)
@@ -64,13 +65,61 @@ func (r *ResponseHandler) WriteMsg(res *dns.Msg) error {
 		Rrtype: dns.TypeA,
 		Class:  state.QClass(),
 	}
-	rr.(*dns.A).A = net.ParseIP(ip)
 
-	res.Answer = []dns.RR{rr}
+	// req.Answer = []dns.RR{rr}
 
-	return r.ResponseWriter.WriteMsg(res)
+	url := fmt.Sprintf("http://127.0.0.1:8080/info?name=%s", question)
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Error("Call to healthchecker failed.")
+		return dns.RcodeServerFailure, err
+
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Error("Unable to parse response from healthchecker.")
+		return dns.RcodeServerFailure, err
+	}
+
+	rr.(*dns.A).A = net.ParseIP(string(body))
+
+	reply := &dns.Msg{}
+	reply.SetReply(r)
+	reply.Authoritative = true
+
+	reply.Extra = []dns.RR{rr}
+
+	w.WriteMsg(reply)
+
+	return plugin.NextOrFailure(g.Name(), g.Next, ctx, w, r)
+}
+
+func (g Gtm) Name() string {
+	return "gtm"
 }
 
 func NewResponseHandler(w dns.ResponseWriter) *ResponseHandler {
 	return &ResponseHandler{ResponseWriter: w}
+}
+
+func (g Gtm) Ready() bool {
+	return true
+}
+
+func setup(c *caddy.Controller) error {
+	c.Next()
+	if c.NextArg() {
+		return plugin.Error("gtm", c.ArgErr())
+	}
+
+	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
+		return Gtm{Next: next}
+	})
+
+	return nil
+}
+
+func init() {
+	plugin.Register("gtm", setup)
 }
