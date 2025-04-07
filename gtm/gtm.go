@@ -43,17 +43,7 @@ type ResponseHandler struct {
 
 func (g Gtm) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
 
-	pw := NewResponseHandler(w)
-
-	return plugin.NextOrFailure(g.Name(), g.Next, ctx, pw, r)
-}
-
-func (g Gtm) Name() string {
-	return "gtm"
-}
-
-func (r *ResponseHandler) WriteMsg(res *dns.Msg) error {
-	question := res.Question[0].Name
+	question := r.Question[0].Name
 
 	// Remove the technically correct (but not usually seen) trailing dot which
 	// reprents that the domain name is fully qualified to the root zone.
@@ -63,8 +53,8 @@ func (r *ResponseHandler) WriteMsg(res *dns.Msg) error {
 	log.Infof("Question: %s", question)
 
 	state := request.Request{
-		W:   r.ResponseWriter,
-		Req: res,
+		W:   w,
+		Req: r,
 	}
 
 	var rr dns.RR
@@ -76,25 +66,37 @@ func (r *ResponseHandler) WriteMsg(res *dns.Msg) error {
 		Class:  state.QClass(),
 	}
 
-	res.Answer = []dns.RR{rr}
+	// req.Answer = []dns.RR{rr}
 
 	url := fmt.Sprintf("http://127.0.0.1:8080/info?name=%s", question)
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Error("Call to healthchecker failed.")
-		return err
+		return dns.RcodeServerFailure, err
 
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error("Unable to parse response from healthchecker.")
-		return err
+		return dns.RcodeServerFailure, err
 	}
 
 	rr.(*dns.A).A = net.ParseIP(string(body))
 
-	return r.ResponseWriter.WriteMsg(res)
+	reply := &dns.Msg{}
+	reply.SetReply(r)
+	reply.Authoritative = true
+
+	reply.Extra = []dns.RR{rr}
+
+	w.WriteMsg(reply)
+
+	return plugin.NextOrFailure(g.Name(), g.Next, ctx, w, r)
+}
+
+func (g Gtm) Name() string {
+	return "gtm"
 }
 
 func NewResponseHandler(w dns.ResponseWriter) *ResponseHandler {
