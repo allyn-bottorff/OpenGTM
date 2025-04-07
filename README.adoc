@@ -5,6 +5,22 @@ responses to DNS queries.
 
 The Go version of this project is now located here: https://github.com/allyn-bottorff/OpenGTM-Go
 
+== Intended Use
+
+This project is a proof-of-concept. It works, but has some limitations and
+sharp edges, especially in the gtm CoreDNS plugin.
+
+.Features
+* HTTP(S) health checks
+** Configurable HTTPS validity
+** Health status by HTTP return code or string matching
+* Fallback IP
+* TCP health checks
+** Connection success/failure
+* CoreDNS plugin
+** DNS responses based on the health_checker
+
+
 == Structure
 
 * Rust health checking service
@@ -50,7 +66,7 @@ https://github.com/coredns/coredns[CoreDNS] itself with a modified config file.
 . Add a `Corefile` to the root of the repository with a configuration which
   adds the new gtm plugin (e.g.):
 +
-.Corefile
+.Corefile: `./Corefile`
 ----
 . {
   gtm
@@ -70,7 +86,7 @@ directly in the plugin.
 
 This sample config can be used to run the project.
 
-`./conf.json`
+.Configuration: `./conf.json`
 [source, json]
 ----
 {
