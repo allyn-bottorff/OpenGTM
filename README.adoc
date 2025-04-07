@@ -16,6 +16,8 @@ answer to a DNS query
 
 == Running
 
+=== health_checker
+
 The project expects a config file `conf.json` in the same directory of the
 binary. In the future, this path will be configurable.
 
@@ -30,6 +32,38 @@ for setting the log level. E.g.
 ----
 RUST_LOG=info cargo run
 ----
+
+=== CoreDNS
+
+The second component of this service is a plugin for CoreDNS which takes DNS
+requests and translates them into HTTP API calls to the health checker service.
+
+To add this plugin, you will need to build
+https://github.com/coredns/coredns[CoreDNS] itself with a modified config file.
+
+. Add `gtm:gtm` to the top plugin list in `plugin.cfg`
+. Add a new directory for the GTM plugin: `mkdir -p plugin/gtm`
+. Inside `plugin/gtm` symlink `gtm.go` from this repository into that directory.
+. Build the coredns project (from the root of the repository):
+.. `go generate`
+.. `go build`
+. Add a `Corefile` to the root of the repository with a configuration which
+  adds the new gtm plugin (e.g.):
++
+.Corefile
+----
+. {
+  gtm
+}
+----
+. Run coredns: `./coredns`
+
+IMPORTANT: As it is currently configured, the plugin assumes that the health
+checker is running at `http://127.0.0.1:8080`. In the future, that will be
+configurable via options in the Corefile. For now, however, if you need to
+change the running location the health_checker service, you'll need to edit it
+directly in the plugin.
+
 
 
 == Health Checker Configuration
