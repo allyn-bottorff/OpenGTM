@@ -23,7 +23,7 @@ use axum::{
 
 // use reqwest;
 // use env_logger;
-use log::{error, info};
+use log::info;
 use serde::Deserialize;
 // use serde_json;
 use std::fs::File;
