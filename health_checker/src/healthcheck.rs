@@ -100,13 +100,14 @@ pub struct Pool {
 }
 
 /// Long lived poller for TCP health checks.
-pub async fn tcp_poller(pool: Pool, host: String, cache: HealthTable) {
+pub async fn tcp_poller(pool: Arc<Pool>, host: String, cache: HealthTable) {
     // Set backoff to a random integer value between 0 and the interval. At the end of the loop,
     // sleep the difference between the backoff and the configured interval. Ater the sleep, set
     // the interval to 0 so that the sleep is now the same as the interval.
     // This should keep the polling fairly even across the typical polling periods and prevent
     // blasting traffic out all at once on startup and then every 30 seconds after.
 
+    let pool = &pool;
     info!("Starting poller for {}: {}", pool.name, &host);
 
     let backoff = rand::thread_rng().gen_range(0..=pool.interval);
@@ -145,7 +146,7 @@ pub async fn tcp_poller(pool: Pool, host: String, cache: HealthTable) {
 }
 
 /// Long lived poller for HTTP(s) health checks.
-pub async fn http_poller(pool: Pool, host: String, cache: HealthTable) {
+pub async fn http_poller(pool: Arc<Pool>, host: String, cache: HealthTable) {
     // Set backoff to a random integer value between 0 and the interval. At the end of the loop,
     // sleep the difference between the backoff and the configured interval. Ater the sleep, set
     // the interval to 0 so that the sleep is now the same as the interval.
@@ -153,10 +154,12 @@ pub async fn http_poller(pool: Pool, host: String, cache: HealthTable) {
     // blasting traffic out all at once on startup and then every 30 seconds after.
     //
     // TODO(alb): Health checks which require authentication
+    //
+    let pool: &Pool = &pool;
 
     info!("Starting poller for {}: {}", pool.name, &host);
 
-    let http_options = match pool.http_options {
+    let http_options = match &pool.http_options {
         Some(o) => o,
         None => {
             error!(

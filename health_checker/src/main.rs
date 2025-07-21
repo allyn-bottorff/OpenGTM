@@ -131,20 +131,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Build out the table of health checks based on the loaded configuration.
         // Starts a poller referencing the same shared cache for each member
-        for pool in conf.pools {
-            for member in &pool.members {
+
+        // Wrap the pools in Arc so that the compiler can know that they need to be kept after
+        // references to them are passed to the long-lived pollers. The poller potentially never
+        // exit, and we'd prefer to not clone every pool since they're not mutable data.
+        let arc_pools: Vec<Arc<healthcheck::Pool>> =
+            conf.pools.into_iter().map(|pool| Arc::new(pool)).collect();
+        for pool_arc in arc_pools {
+            for member in &pool_arc.members {
                 let t = Arc::clone(&cache);
                 let name = member.clone();
 
-                match pool.poll_type {
-                    // These clones aren't ideal, but it only happens during poller creation.
-                    // There ought to be a way to tell the compiler that the config struct can live
-                    // at least as long as the join_set
+                let pool_ref = Arc::clone(&pool_arc);
+
+                match pool_ref.poll_type {
                     healthcheck::PollType::HTTP => {
-                        join_set.spawn(healthcheck::http_poller(pool.clone(), name, t))
+                        join_set.spawn(healthcheck::http_poller(pool_ref, name, t))
                     }
                     healthcheck::PollType::TCP => {
-                        join_set.spawn(healthcheck::tcp_poller(pool.clone(), name, t))
+                        join_set.spawn(healthcheck::tcp_poller(pool_ref, name, t))
                     }
                 };
             }
